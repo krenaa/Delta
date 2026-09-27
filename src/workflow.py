@@ -12,10 +12,12 @@ from src.state import (
     AgentState,
     GapAnalysisResult,
     InterviewQuestion,
+    MissingSkillRoadmap,
     Tier1Insights,
     WeakImprovement,
 )
 from src.llm import execute_llm_with_fallback
+from src.insights_kb import get_missing_skill_roadmap, get_skill_knowledge
 
 load_dotenv()
 
@@ -230,30 +232,59 @@ def finalize_node(state: AgentState) -> dict:
 
 
 def generate_insights_node(state: AgentState) -> dict:
-    """Node 6: Generates Tier 1 Weak-to-Strong bullets & Technical Interview Questions."""
+    """Node 6: Generates Tier 1 Missing Roadmap, Weak-to-Strong bullets & Technical Interview Questions."""
     final_output: Optional[GapAnalysisResult] = state.get("final_output")
     jd_text = state.get("jd_text", "")
     resume_text = state.get("resume_text", "")
+    company_name = state.get("company_name", "")
+    company_context = state.get("company_context", "")
 
     if not final_output:
         final_output = GapAnalysisResult(missing=[], weak=[], strong=[])
 
-    target_skills = list(final_output.weak)
-    if not target_skills and final_output.missing:
-        target_skills = list(final_output.missing)[:2]
+    total_skills = len(final_output.strong) + len(final_output.weak) + len(final_output.missing)
+    calculated_score = int(
+        round(
+            (len(final_output.strong) * 1.0 + len(final_output.weak) * 0.5)
+            / max(total_skills, 1)
+            * 100
+        )
+    )
+
+    target_weak_skills = list(final_output.weak)
+    if not target_weak_skills and final_output.missing:
+        target_weak_skills = list(final_output.missing)[:2]
+
+    company_prompt_section = ""
+    if company_name:
+        company_prompt_section += f"Target Company: {company_name}\n"
+    if company_context:
+        company_prompt_section += f"Company Mission & Engineering Context:\n{company_context}\n"
 
     messages = [
         (
             "system",
             "You are an executive technical career coach and hiring lead. Analyze the candidate's skill gaps against the target JD.\n"
-            "Provide two high-value deliverables:\n"
-            "1. 'weak_improvements': For each weak or gap skill, generate 2 concrete, metric-driven resume bullet points demonstrating hands-on impact.\n"
-            "2. 'interview_questions': 3-4 realistic technical interview questions probing the candidate's weak and missing areas, with strategic talking points on how to answer honestly and persuasively.\n"
+            "Provide a comprehensive, high-value structured evaluation:\n"
+            "1. 'match_score': An integer readiness score (0-100) reflecting candidate suitability.\n"
+            "2. 'company_name': The target company name.\n"
+            "3. 'company_context': Brief context on the company's core mission and architecture.\n"
+            "4. 'executive_summary': A 2-3 sentence executive synthesis connecting the dots: highlight existing core strengths, identify the main architectural gaps, and define the primary interview ramp-up strategy.\n"
+            "5. 'missing_roadmap': For each missing skill, provide:\n"
+            "   - 'company_keywords': 1-3 punchy keywords on why the company requires this (e.g. ['Zero-Downtime', 'Pod Autoscaling']).\n"
+            "   - 'why_it_matters': 1-2 sentence explanation of why the hiring engineering team specifically requires this for the role. Ground this directly in what the company builds!\n"
+            "   - 'project_keywords': 1-3 punchy keywords on the 48-hr project deliverable (e.g. ['Local k3s', 'Helm Manifest']).\n"
+            "   - 'bridge_project': Concrete 48-hour hands-on proof project the candidate can build to prove competence.\n"
+            "   - 'bridge_keywords': 1-3 punchy keywords on which project of yours to connect (e.g. ['FastAPI App', 'Docker Compose']).\n"
+            "   - 'transferable_from': Which project/experience from candidate background directly bridges into this skill.\n"
+            "6. 'weak_improvements': For each weak skill, generate 2 concrete, metric-driven resume bullet points demonstrating hands-on impact.\n"
+            "7. 'interview_questions': 3-4 realistic technical interview questions probing gaps, with strategic talking points connecting past experience to rapid ramp-up.\n"
             "Keep advice highly actionable, engineering-focused, and tailored.",
         ),
         (
             "human",
-            f"Target Skills to Improve:\n{target_skills}\n\nMissing Skills:\n{final_output.missing}\n\nWeak Skills:\n{final_output.weak}\n\nJob Description:\n{jd_text}\n\nResume Summary:\n{resume_text}",
+            f"{company_prompt_section}"
+            f"Missing Skills:\n{final_output.missing}\n\nWeak Skills:\n{final_output.weak}\n\nStrong Skills:\n{final_output.strong}\n\nJob Description:\n{jd_text}\n\nResume Summary:\n{resume_text}",
         ),
     ]
 
@@ -264,37 +295,70 @@ def generate_insights_node(state: AgentState) -> dict:
     if (
         llm_result
         and isinstance(llm_result, Tier1Insights)
-        and (llm_result.weak_improvements or llm_result.interview_questions)
+        and (llm_result.weak_improvements or llm_result.interview_questions or llm_result.missing_roadmap)
     ):
         insights = llm_result
-    else:
-        # Heuristic / Template generator fallback
-        improvements: List[WeakImprovement] = []
-        for s in target_skills:
-            improvements.append(
-                WeakImprovement(
-                    skill=s,
-                    recommended_bullets=[
-                        f"Architected and integrated {s} services into production pipelines, improving system reliability and response latency by 35%.",
-                        f"Designed modular workflows leveraging {s} best practices, reducing maintenance overhead and accelerating release velocity by 40%.",
-                    ],
-                )
+        if not insights.match_score:
+            insights.match_score = calculated_score
+        if company_name and not insights.company_name:
+            insights.company_name = company_name
+        if company_context and not insights.company_context:
+            insights.company_context = company_context
+        if not insights.missing_roadmap and final_output.missing:
+            insights.missing_roadmap = [
+                get_missing_skill_roadmap(s, idx)
+                for idx, s in enumerate(final_output.missing)
+            ]
+        else:
+            # Ensure each roadmap has keywords populated
+            for idx, rm in enumerate(insights.missing_roadmap):
+                default_rm = get_missing_skill_roadmap(rm.skill, idx)
+                if not rm.company_keywords:
+                    rm.company_keywords = default_rm.company_keywords
+                if not rm.project_keywords:
+                    rm.project_keywords = default_rm.project_keywords
+                if not rm.bridge_keywords:
+                    rm.bridge_keywords = default_rm.bridge_keywords
+        if not insights.executive_summary:
+            strong_str = ", ".join(final_output.strong[:3]) or "core software engineering"
+            missing_str = ", ".join(final_output.missing[:3]) or "advanced cloud infrastructure"
+            insights.executive_summary = (
+                f"Candidate demonstrates proven foundation in {strong_str}. "
+                f"The primary gap lies in {missing_str}. "
+                f"Position transferable strengths during interviews while demonstrating rapid ramp-up via focused proof-of-concept projects."
             )
+    else:
+        # Domain-aware knowledge base generator fallback
+        missing_roadmap: List[MissingSkillRoadmap] = [
+            get_missing_skill_roadmap(s, idx)
+            for idx, s in enumerate(final_output.missing)
+        ]
+
+        improvements: List[WeakImprovement] = []
+        for idx, s in enumerate(target_weak_skills):
+            _, improvement = get_skill_knowledge(s, index=idx)
+            improvements.append(improvement)
 
         questions: List[InterviewQuestion] = []
-        for s in (final_output.missing + final_output.weak)[:4]:
-            questions.append(
-                InterviewQuestion(
-                    question=f"The job requires hands-on experience with {s}. Can you describe a complex challenge you encountered with it, or how you would ramp up?",
-                    targeted_skill=s,
-                    suggested_talking_points=(
-                        f"Acknowledge your foundational exposure to {s}, then bridge immediately to your strong experience in related tools. "
-                        f"Detail a concrete proof-of-concept project or personal lab demonstrating your rapid learning velocity."
-                    ),
-                )
-            )
+        target_q_skills = (final_output.missing + final_output.weak)[:4]
+        for idx, s in enumerate(target_q_skills):
+            question, _ = get_skill_knowledge(s, index=idx)
+            questions.append(question)
+
+        strong_str = ", ".join(final_output.strong[:3]) or "core software engineering"
+        missing_str = ", ".join(final_output.missing[:3]) or "advanced cloud infrastructure"
+        exec_summary = (
+            f"Candidate brings verified competence in {strong_str}. "
+            f"The primary architectural gaps center around {missing_str}. "
+            f"Leverage your proven backend foundation to demonstrate how your conceptual mastery bridges directly to these required systems."
+        )
 
         insights = Tier1Insights(
+            match_score=calculated_score,
+            company_name=company_name or None,
+            company_context=company_context or None,
+            executive_summary=exec_summary,
+            missing_roadmap=missing_roadmap,
             weak_improvements=improvements,
             interview_questions=questions,
         )

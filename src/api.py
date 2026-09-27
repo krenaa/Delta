@@ -8,12 +8,13 @@ from langgraph.types import Command
 import pypdf
 
 from src.state import AgentState, GapAnalysisResult, InputState, Tier1Insights
+from src.url_fetcher import fetch_and_analyze_job_url, JobUrlParsedResult
 from src.workflow import build_gap_analyzer_graph
 
 app = FastAPI(
     title="Resume Gap Analyzer Agent",
     description="LangGraph Human-in-the-Loop Resume vs JD Gap Analysis API with Tier 1 Insights",
-    version="1.1.0",
+    version="1.2.0",
 )
 
 app.add_middleware(
@@ -28,9 +29,15 @@ app.add_middleware(
 graph = build_gap_analyzer_graph()
 
 
+class FetchUrlRequest(BaseModel):
+    url: str
+
+
 class AnalyzeRequest(BaseModel):
     job_description_text: str
     resume_text: str
+    company_name: Optional[str] = None
+    company_context: Optional[str] = None
 
 
 class AnalyzeResponse(BaseModel):
@@ -60,6 +67,20 @@ class UploadResumeResponse(BaseModel):
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "service": "resume-gap-analyzer"}
+
+
+@app.post("/api/fetch-url", response_model=JobUrlParsedResult)
+async def fetch_job_url(payload: FetchUrlRequest):
+    """Fetches job and company context from a URL (e.g. LinkedIn, Greenhouse, Lever, company careers)."""
+    if not payload.url or not payload.url.strip():
+        raise HTTPException(status_code=400, detail="A valid job or company URL is required.")
+    try:
+        result = await fetch_and_analyze_job_url(payload.url.strip())
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch and analyze URL: {str(e)}"
+        )
 
 
 @app.post("/api/upload-resume", response_model=UploadResumeResponse)
@@ -96,6 +117,8 @@ def start_analysis(payload: AnalyzeRequest):
     initial_state: AgentState = {
         "jd_text": payload.job_description_text,
         "resume_text": payload.resume_text,
+        "company_name": payload.company_name,
+        "company_context": payload.company_context,
         "extracted_jd_skills": [],
         "extracted_candidate_skills": [],
         "gap_analysis": None,
