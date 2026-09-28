@@ -17,6 +17,7 @@ import {
   Coffee,
   Copy,
   Download,
+  ExternalLink,
   FileCheck,
   FileText,
   FileUp,
@@ -39,9 +40,19 @@ import {
   Upload,
   UserCheck,
   Wand2,
+  X,
   XCircle,
   Zap,
 } from "lucide-react";
+import dynamic from "next/dynamic";
+const ResumePdfViewer = dynamic(() => import("./ResumePdfViewer"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex-1 w-full min-h-[580px] flex items-center justify-center bg-white text-xs text-[var(--text-muted)]">
+      Rendering full-width resume...
+    </div>
+  ),
+});
 
 interface GapAnalysisResult {
   missing: string[];
@@ -151,7 +162,7 @@ export default function ResumeGapAnalyzerPage() {
     Record<string, { project?: string; pitch?: string; isEditing?: boolean }>
   >({});
 
-  // Dynamically detect role and candidate name from documents (no hardcoded benchmark boxes)
+  // Dynamically detect role and candidate name from documents
   const detectedRole = useMemo(() => {
     const lines = jobDescription.split("\n").map((l) => l.trim()).filter(Boolean);
     for (const line of lines) {
@@ -565,19 +576,19 @@ export default function ResumeGapAnalyzerPage() {
     }
 
     md += `## 1. Skill Gap Evaluation\n\n`;
-    md += `### Missing Skills (${finalOutput.missing.length})\n`;
+    md += `### ✕ Missing Skills (${finalOutput.missing.length})\n`;
     md += finalOutput.missing.length > 0
-      ? finalOutput.missing.map((s) => `- ${s}`).join("\n") + "\n\n"
+      ? finalOutput.missing.map((s) => `- ✕ ${s}`).join("\n") + "\n\n"
       : "_None detected_\n\n";
 
-    md += `### Weak Skills (${finalOutput.weak.length})\n`;
+    md += `### ~ Weak Skills (${finalOutput.weak.length})\n`;
     md += finalOutput.weak.length > 0
-      ? finalOutput.weak.map((s) => `- ${s}`).join("\n") + "\n\n"
+      ? finalOutput.weak.map((s) => `- ~ ${s}`).join("\n") + "\n\n"
       : "_None detected_\n\n";
 
-    md += `### Strong Skills (${finalOutput.strong.length})\n`;
+    md += `### ✓ Strong Skills (${finalOutput.strong.length})\n`;
     md += finalOutput.strong.length > 0
-      ? finalOutput.strong.map((s) => `- ${s}`).join("\n") + "\n\n"
+      ? finalOutput.strong.map((s) => `- ✓ ${s}`).join("\n") + "\n\n"
       : "_None detected_\n\n";
 
     if (insights?.missing_roadmap && insights.missing_roadmap.length > 0) {
@@ -631,26 +642,51 @@ export default function ResumeGapAnalyzerPage() {
       return;
     }
 
+    const printStyles = `
+      :root {
+        --navy-900: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--navy-900").trim() : ""};
+        --navy-700: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--navy-700").trim() : ""};
+        --navy-50: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--navy-50").trim() : ""};
+        --bg: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() : ""};
+        --surface: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--surface").trim() : ""};
+        --border: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--border").trim() : ""};
+        --text-primary: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--text-primary").trim() : ""};
+        --text-muted: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--text-muted").trim() : ""};
+        --missing: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--missing").trim() : ""};
+        --missing-bg: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--missing-bg").trim() : ""};
+        --missing-border: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--missing-border").trim() : ""};
+        --weak: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--weak").trim() : ""};
+        --weak-bg: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--weak-bg").trim() : ""};
+        --weak-border: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--weak-border").trim() : ""};
+        --strong: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--strong").trim() : ""};
+        --strong-bg: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--strong-bg").trim() : ""};
+        --strong-border: ${typeof window !== "undefined" ? getComputedStyle(document.documentElement).getPropertyValue("--strong-border").trim() : ""};
+      }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px; color: var(--navy-900); max-width: 820px; margin: 0 auto; line-height: 1.5; background: var(--surface); }
+      h1 { font-size: 22px; margin-bottom: 4px; color: var(--navy-900); font-weight: 800; }
+      .meta { color: var(--text-muted); font-size: 12px; margin-top: 0; margin-bottom: 20px; }
+      .score-box { background: var(--navy-50); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 24px; }
+      .score-title { font-size: 16px; font-weight: bold; color: var(--navy-900); margin-bottom: 4px; }
+      h2 { font-size: 15px; margin-top: 24px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; color: var(--navy-900); text-transform: uppercase; letter-spacing: 0.5px; }
+      .card { border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 16px; background: var(--surface); page-break-inside: avoid; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 10px; }
+      .grid-item { background: var(--bg); padding: 10px; border-radius: 8px; font-size: 11px; }
+      .grid-item strong { display: block; font-size: 10px; text-transform: uppercase; color: var(--navy-900); margin-bottom: 4px; }
+      .badge-missing { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; background: var(--missing-bg); color: var(--missing); border: 1px solid var(--missing-border); margin-right: 4px; }
+      .badge-weak { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; background: var(--weak-bg); color: var(--weak); border: 1px solid var(--weak-border); margin-right: 4px; }
+      .badge-strong { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; background: var(--strong-bg); color: var(--strong); border: 1px solid var(--strong-border); margin-right: 4px; }
+      ul { margin: 6px 0; padding-left: 20px; font-size: 12px; }
+      li { margin-bottom: 4px; }
+      @media print { body { padding: 16px; } }
+    `;
+
     const reportHtml = `
       <!DOCTYPE html>
       <html>
         <head>
           <title>Career Gap Analysis & Roadmap - ${detectedRole}</title>
           <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px; color: #1c1917; max-width: 820px; margin: 0 auto; line-height: 1.5; }
-            h1 { font-size: 22px; margin-bottom: 4px; color: #78350f; font-weight: 800; }
-            .meta { color: #78716c; font-size: 12px; margin-top: 0; margin-bottom: 20px; }
-            .score-box { background: #fdfbf7; border: 1px solid #e7dfd5; border-radius: 12px; padding: 16px; margin-bottom: 24px; }
-            .score-title { font-size: 16px; font-weight: bold; color: #78350f; margin-bottom: 4px; }
-            h2 { font-size: 15px; margin-top: 24px; margin-bottom: 12px; border-bottom: 1px solid #e7dfd5; padding-bottom: 6px; color: #1c1917; text-transform: uppercase; letter-spacing: 0.5px; }
-            .card { border: 1px solid #e7dfd5; border-radius: 10px; padding: 14px; margin-bottom: 16px; background: #ffffff; page-break-inside: avoid; }
-            .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 10px; }
-            .grid-item { background: #faf8f5; padding: 10px; border-radius: 8px; font-size: 11px; }
-            .grid-item strong { display: block; font-size: 10px; text-transform: uppercase; color: #78350f; margin-bottom: 4px; }
-            .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; background: #fef9ee; color: #92400e; border: 1px solid #fde68a; margin-right: 4px; }
-            ul { margin: 6px 0; padding-left: 20px; font-size: 12px; }
-            li { margin-bottom: 4px; }
-            @media print { body { padding: 16px; } }
+            ${printStyles}
           </style>
         </head>
         <body>
@@ -659,8 +695,8 @@ export default function ResumeGapAnalyzerPage() {
 
           <div class="score-box">
             <div class="score-title">Role Readiness Score: ${insights?.match_score ?? 74}%</div>
-            ${(companyContext || insights?.company_context) ? `<p style="font-size: 11px; margin: 4px 0 6px 0; color: #78350f; font-weight: 600;">🏢 Company Mission: ${companyContext || insights?.company_context}</p>` : ""}
-            <p style="font-size: 12px; margin: 4px 0 0 0; color: #44403c;">${insights?.executive_summary || ""}</p>
+            ${(companyContext || insights?.company_context) ? `<p style="font-size: 11px; margin: 4px 0 6px 0; color: var(--navy-900); font-weight: 600;">🏢 Company Mission: ${companyContext || insights?.company_context}</p>` : ""}
+            <p style="font-size: 12px; margin: 4px 0 0 0; color: var(--navy-900);">${insights?.executive_summary || ""}</p>
           </div>
 
           <h2>1. 48-Hour Missing Skills Roadmap</h2>
@@ -668,19 +704,21 @@ export default function ResumeGapAnalyzerPage() {
             const bridge = getBridgeData(item.skill, idx, item.transferable_from);
             return `
             <div class="card">
-              <div style="font-weight: bold; font-size: 13px; color: #1c1917;">${idx + 1}. ${item.skill}</div>
+              <div style="font-weight: bold; font-size: 13px; color: var(--navy-900);">
+                <span class="badge-missing">✕ Gap</span> ${idx + 1}. ${item.skill}
+              </div>
               <div class="grid">
                 <div class="grid-item">
                   <strong>Why Company Wants</strong>
-                  <p style="margin: 0; color: #44403c;">${item.why_it_matters}</p>
+                  <p style="margin: 0; color: var(--navy-900);">${item.why_it_matters}</p>
                 </div>
-                <div class="grid-item" style="background: #ffffff; border: 1px solid #e7dfd5;">
+                <div class="grid-item" style="background: var(--surface); border: 1px solid var(--border);">
                   <strong>48-Hour PoC Deliverable</strong>
-                  <p style="margin: 0; color: #1c1917; font-weight: 500;">${item.bridge_project}</p>
+                  <p style="margin: 0; color: var(--navy-900); font-weight: 500;">${item.bridge_project}</p>
                 </div>
                 <div class="grid-item">
                   <strong>Resume Bridge (${bridge.project})</strong>
-                  <p style="margin: 0; color: #44403c;">${bridge.pitch}</p>
+                  <p style="margin: 0; color: var(--navy-900);">${bridge.pitch}</p>
                 </div>
               </div>
             </div>
@@ -689,7 +727,7 @@ export default function ResumeGapAnalyzerPage() {
           <h2>2. Recommended Resume Bullet Rewrites</h2>
           ${(insights?.weak_improvements || []).map(w => `
             <div class="card">
-              <span class="badge">${w.skill}</span>
+              <span class="badge-weak">~ ${w.skill}</span>
               <ul>
                 ${w.recommended_bullets.map(b => `<li>${b}</li>`).join("")}
               </ul>
@@ -699,8 +737,8 @@ export default function ResumeGapAnalyzerPage() {
           <h2>3. High-Probability Interview Questions</h2>
           ${(insights?.interview_questions || []).map((q, idx) => `
             <div class="card">
-              <div style="font-weight: bold; font-size: 12px; margin-bottom: 4px;">Q${idx + 1}: ${q.question}</div>
-              <div style="font-size: 11px; color: #57534e;"><strong>Strategy:</strong> ${q.suggested_talking_points}</div>
+              <div style="font-weight: bold; font-size: 12px; margin-bottom: 4px;"><span class="badge-missing">✕ Q${idx + 1}</span> ${q.question}</div>
+              <div style="font-size: 11px; color: var(--text-muted);"><strong>Strategy:</strong> ${q.suggested_talking_points}</div>
             </div>
           `).join("")}
 
@@ -755,50 +793,65 @@ export default function ResumeGapAnalyzerPage() {
   const missingCount = finalOutput?.missing.length ?? hitlReview?.missing.length ?? 0;
   const weakCount = finalOutput?.weak.length ?? hitlReview?.weak.length ?? 0;
   const strongCount = finalOutput?.strong.length ?? hitlReview?.strong.length ?? 0;
-  const isAuditPending = !!hitlReview && !finalOutput;
-  const isCompleted = !!finalOutput;
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2] text-stone-900 font-sans selection:bg-amber-200/60 selection:text-amber-950 pb-20 relative">
-      {/* Warm Parchment Ambient Radial Glows */}
-      <div className="absolute top-0 left-1/4 w-[550px] h-[350px] bg-amber-200/15 rounded-full blur-[140px] pointer-events-none -z-10" />
-      <div className="absolute top-20 right-1/4 w-[500px] h-[350px] bg-amber-100/20 rounded-full blur-[140px] pointer-events-none -z-10" />
+    <div
+      style={{ backgroundColor: "var(--bg)", color: "var(--text-primary)" }}
+      className="min-h-screen font-sans pb-20 relative selection:bg-[var(--teal-600)]/20"
+    >
+      {/* Subtle Cool Ambient Radial Glows */}
+      <div className="absolute top-0 left-1/4 w-[550px] h-[350px] bg-[var(--teal-600)]/5 rounded-full blur-[140px] pointer-events-none -z-10" />
+      <div className="absolute top-20 right-1/4 w-[500px] h-[350px] bg-[var(--navy-700)]/5 rounded-full blur-[140px] pointer-events-none -z-10" />
 
-      {/* Top Header (Clean: No Copy/Download buttons in header) */}
-      <header className="sticky top-0 z-30 bg-[#FAF7F2]/90 backdrop-blur-md border-b border-[#E7DFD5] px-4 sm:px-8 py-3.5 mb-6">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#78350F] text-amber-50 flex items-center justify-center shadow-xs">
-              <Coffee className="w-4.5 h-4.5" />
+      {/* Top Header (Clean Light Surface, Navy Logo & Text, Subtle Border) */}
+      <header
+        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+        className="sticky top-0 z-30 border-b px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3.5 mb-4 sm:mb-6 shadow-xs"
+      >
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            {/* Bold Navy Logo Box with White Icon */}
+            <div
+              style={{ backgroundColor: "var(--navy-900)", color: "var(--surface)" }}
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shadow-xs font-black text-base sm:text-lg select-none shrink-0"
+            >
+              Δ
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-bold tracking-tight text-stone-900">
-                  Resume Gap Analyzer
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 style={{ color: "var(--navy-900)" }} className="text-base sm:text-lg font-bold tracking-tight">
+                  Delta
                 </h1>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide bg-[#F0EAE1] text-amber-900 border border-[#DDD1C2]">
+                <span
+                  style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                  className="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold tracking-wide border"
+                >
                   LangGraph Agentic Audit
                 </span>
               </div>
-              <p className="text-[11px] text-stone-500 font-medium">
+              <p style={{ color: "var(--text-muted)" }} className="text-[10px] sm:text-[11px] font-medium line-clamp-1">
                 Targeted skill diagnosis, 48-hr bridge roadmap & interview defense
               </p>
             </div>
           </div>
 
-          {/* Top Actions: Status and New Audit */}
-          <div className="flex items-center gap-2.5">
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#EFE9DF] border border-[#DDD2C2] text-xs font-medium text-stone-800">
-              <span className="w-2 h-2 rounded-full bg-emerald-600" />
+          {/* Top Actions: Light styling pills with subtle border */}
+          <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
+            <div
+              style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
+              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full border text-[11px] sm:text-xs font-medium"
+            >
+              <span style={{ backgroundColor: "var(--teal-600)" }} className="w-2 h-2 rounded-full shadow-[0_0_8px_rgba(15,118,110,0.8)]" />
               <span>AI Engine Ready</span>
             </div>
 
             {(finalOutput || hitlReview) && (
               <button
                 onClick={handleReset}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer"
+                style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                className="flex items-center gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1.5 border hover:bg-[var(--navy-50)] rounded-xl text-[11px] sm:text-xs font-semibold shadow-xs transition cursor-pointer"
               >
-                <RefreshCw className="w-3.5 h-3.5 text-stone-500" />
+                <RefreshCw className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                 <span>New Audit</span>
               </button>
             )}
@@ -808,16 +861,20 @@ export default function ResumeGapAnalyzerPage() {
 
       {/* Error Banner */}
       {error && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-8 mb-6">
-          <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-300/80 text-amber-950 text-xs sm:text-sm flex items-start gap-3 shadow-xs">
-            <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-            <div className="flex-grow">
-              <p className="font-semibold text-amber-950">System Notice</p>
-              <p className="mt-0.5">{error}</p>
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mb-4 sm:mb-6">
+          <div
+            style={{ backgroundColor: "var(--surface)", borderColor: "rgba(220, 38, 38, 0.3)" }}
+            className="p-3 sm:p-4 rounded-xl sm:rounded-2xl border text-xs sm:text-sm flex items-start gap-2.5 sm:gap-3 shadow-xs"
+          >
+            <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[var(--missing)] shrink-0 mt-0.5" />
+            <div className="flex-grow min-w-0">
+              <p style={{ color: "var(--missing)" }} className="font-semibold text-xs sm:text-sm">System Notice</p>
+              <p style={{ color: "var(--text-primary)" }} className="mt-0.5 opacity-80 break-words text-xs">{error}</p>
             </div>
             <button
               onClick={() => setError(null)}
-              className="text-stone-400 hover:text-stone-700 text-xs font-bold cursor-pointer"
+              style={{ color: "var(--text-muted)" }}
+              className="hover:text-[var(--navy-900)] text-xs font-bold cursor-pointer shrink-0"
             >
               Dismiss
             </button>
@@ -828,53 +885,70 @@ export default function ResumeGapAnalyzerPage() {
       {/* ========================================================================= */}
       {/* SIDE-BY-SIDE LAYOUT: Left Sidebar Navigation + Right Content Workspace     */}
       {/* ========================================================================= */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-8 flex flex-col lg:flex-row gap-6 items-start">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 flex flex-col lg:flex-row gap-4 sm:gap-6 items-start">
         {/* LEFT SIDEBAR NAVIGATION DRAWER */}
-        <aside className="w-full lg:w-60 shrink-0 bg-white border border-[#E7DFD5] rounded-3xl shadow-xs overflow-hidden lg:sticky lg:top-20">
+        <aside
+          style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+          className="w-full lg:w-60 shrink-0 border rounded-[12px] shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-shadow overflow-hidden lg:sticky lg:top-20"
+        >
           {/* Target Profile Card (Auto-detected from JD and Resume) */}
-          <div className="p-4 border-b border-[#EFE8DD] bg-[#FAF8F5]">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 bg-amber-100/70 px-2 py-0.5 rounded border border-amber-200">
-              Target Role
-            </span>
-            <h3 className="text-xs sm:text-sm font-bold text-stone-900 mt-1.5 leading-snug truncate">
-              {detectedRole}
-            </h3>
+          <div style={{ borderColor: "var(--border)" }} className="p-3 sm:p-4 border-b">
+            <div className="flex items-center justify-between gap-2 lg:block">
+              <div>
+                <span
+                  style={{ backgroundColor: "var(--role-bg)", color: "var(--role-text)", borderColor: "var(--role-border)" }}
+                  className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border inline-block"
+                >
+                  Target Role
+                </span>
+                <h3 style={{ color: "var(--navy-900)" }} className="text-xs sm:text-sm font-bold mt-1 leading-snug truncate max-w-[200px] sm:max-w-xs lg:max-w-none">
+                  {detectedRole}
+                </h3>
+              </div>
+              <p style={{ color: "var(--text-muted)" }} className="text-[10px] sm:text-[11px] font-medium truncate mt-0.5 hidden sm:block lg:block">
+                Candidate: {detectedCandidateName}
+              </p>
+            </div>
             {(companyName || insights?.company_name) && (
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-900 mt-1 truncate">
-                <Building2 className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <div style={{ color: "var(--navy-700)" }} className="flex items-center gap-1.5 text-[11px] font-bold mt-1 truncate">
+                <Building2 className="w-3.5 h-3.5 text-[var(--navy-700)] shrink-0" />
                 <span className="truncate">{companyName || insights?.company_name}</span>
                 {sourcePlatform && (
-                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-100/80 text-amber-900 font-semibold shrink-0">
+                  <span
+                    style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                    className="text-[9px] px-1.5 py-0.2 rounded font-semibold border shrink-0"
+                  >
                     {sourcePlatform}
                   </span>
                 )}
               </div>
             )}
-            <p className="text-[11px] text-stone-500 font-medium truncate mt-0.5">
+            <p style={{ color: "var(--text-muted)" }} className="text-[10px] font-medium truncate mt-0.5 sm:hidden">
               Candidate: {detectedCandidateName}
             </p>
           </div>
 
-          {/* Navigation Items */}
-          <nav className="p-2 space-y-1 text-xs">
+          {/* Navigation Items: Horizontal scrollable strip on mobile/tablet, vertical stack on desktop */}
+          <nav className="p-1.5 sm:p-2 flex flex-row lg:flex-col overflow-x-auto gap-1 sm:gap-1.5 text-xs no-scrollbar">
             <button
               onClick={() => setActiveSection("sources")}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition cursor-pointer font-medium ${
-                activeSection === "sources"
-                  ? "bg-[#78350F] text-white shadow-xs font-semibold"
-                  : "text-stone-700 hover:bg-stone-50"
-              }`}
+              style={{
+                backgroundColor: activeSection === "sources" ? "var(--navy-900)" : "transparent",
+                color: activeSection === "sources" ? "var(--surface)" : "var(--text-muted)",
+              }}
+              className="shrink-0 lg:w-full flex items-center justify-between gap-2 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] whitespace-nowrap"
             >
-              <div className="flex items-center gap-2.5">
-                <FileUp className="w-4 h-4" />
-                <span>Source Materials</span>
+              <div className="flex items-center gap-2">
+                <FileUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span className="text-xs">Source Materials</span>
               </div>
               <span
-                className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                  activeSection === "sources"
-                    ? "bg-[#5E2B0C] text-amber-100"
-                    : "bg-stone-100 text-stone-500"
-                }`}
+                style={{
+                  backgroundColor: activeSection === "sources" ? "var(--navy-700)" : "var(--navy-50)",
+                  color: activeSection === "sources" ? "var(--surface)" : "var(--navy-900)",
+                  borderColor: activeSection === "sources" ? "rgba(255,255,255,0.2)" : "var(--border)",
+                }}
+                className="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded font-semibold border"
               >
                 Inputs
               </span>
@@ -883,27 +957,28 @@ export default function ResumeGapAnalyzerPage() {
             <button
               onClick={() => (hitlReview || finalOutput) && setActiveSection("review")}
               disabled={!hitlReview && !finalOutput}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition cursor-pointer font-medium ${
-                !hitlReview && !finalOutput ? "opacity-40 cursor-not-allowed text-stone-400" : ""
-              } ${
-                activeSection === "review"
-                  ? "bg-[#78350F] text-white shadow-xs font-semibold"
-                  : "text-stone-700 hover:bg-stone-50"
+              style={{
+                backgroundColor: activeSection === "review" ? "var(--navy-900)" : "transparent",
+                color: activeSection === "review" ? "var(--surface)" : "var(--text-muted)",
+              }}
+              className={`shrink-0 lg:w-full flex items-center justify-between gap-2 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] whitespace-nowrap ${
+                !hitlReview && !finalOutput ? "opacity-40 cursor-not-allowed" : ""
               }`}
             >
-              <div className="flex items-center gap-2.5">
-                <TableProperties className="w-4 h-4" />
-                <span>Skill Verification</span>
+              <div className="flex items-center gap-2">
+                <TableProperties className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span className="text-xs">Skill Verification</span>
               </div>
               {(hitlReview || finalOutput) && (
                 <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                    activeSection === "review"
-                      ? "bg-[#5E2B0C] text-amber-100"
-                      : "bg-[#FDF2F0] text-[#991B1B] border border-[#FCA5A5]"
-                  }`}
+                  style={{
+                    backgroundColor: activeSection === "review" ? "var(--navy-700)" : "var(--missing-bg)",
+                    color: activeSection === "review" ? "var(--surface)" : "var(--missing)",
+                    borderColor: activeSection === "review" ? "rgba(255,255,255,0.2)" : "var(--missing-border)",
+                  }}
+                  className="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded font-semibold border"
                 >
-                  {missingCount} Gaps
+                  ✕ {missingCount}
                 </span>
               )}
             </button>
@@ -911,25 +986,26 @@ export default function ResumeGapAnalyzerPage() {
             <button
               onClick={() => finalOutput && setActiveSection("roadmap")}
               disabled={!finalOutput}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition cursor-pointer font-medium ${
-                !finalOutput ? "opacity-40 cursor-not-allowed text-stone-400" : ""
-              } ${
-                activeSection === "roadmap"
-                  ? "bg-[#78350F] text-white shadow-xs font-semibold"
-                  : "text-stone-700 hover:bg-stone-50"
+              style={{
+                backgroundColor: activeSection === "roadmap" ? "var(--navy-900)" : "transparent",
+                color: activeSection === "roadmap" ? "var(--surface)" : "var(--text-muted)",
+              }}
+              className={`shrink-0 lg:w-full flex items-center justify-between gap-2 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] whitespace-nowrap ${
+                !finalOutput ? "opacity-40 cursor-not-allowed" : ""
               }`}
             >
-              <div className="flex items-center gap-2.5">
-                <Target className="w-4 h-4" />
-                <span>48-Hour Roadmap</span>
+              <div className="flex items-center gap-2">
+                <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span className="text-xs">48-Hour Roadmap</span>
               </div>
               {insights?.missing_roadmap && (
                 <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                    activeSection === "roadmap"
-                      ? "bg-[#5E2B0C] text-amber-100"
-                      : "bg-[#FEF9EE] text-[#92400E] border border-[#FDE68A]"
-                  }`}
+                  style={{
+                    backgroundColor: activeSection === "roadmap" ? "var(--navy-700)" : "var(--navy-50)",
+                    color: activeSection === "roadmap" ? "var(--surface)" : "var(--navy-900)",
+                    borderColor: activeSection === "roadmap" ? "rgba(255,255,255,0.2)" : "var(--border)",
+                  }}
+                  className="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded font-semibold border"
                 >
                   {insights.missing_roadmap.length} PoCs
                 </span>
@@ -939,27 +1015,28 @@ export default function ResumeGapAnalyzerPage() {
             <button
               onClick={() => finalOutput && setActiveSection("bullets")}
               disabled={!finalOutput}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition cursor-pointer font-medium ${
-                !finalOutput ? "opacity-40 cursor-not-allowed text-stone-400" : ""
-              } ${
-                activeSection === "bullets"
-                  ? "bg-[#78350F] text-white shadow-xs font-semibold"
-                  : "text-stone-700 hover:bg-stone-50"
+              style={{
+                backgroundColor: activeSection === "bullets" ? "var(--navy-900)" : "transparent",
+                color: activeSection === "bullets" ? "var(--surface)" : "var(--text-muted)",
+              }}
+              className={`shrink-0 lg:w-full flex items-center justify-between gap-2 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] whitespace-nowrap ${
+                !finalOutput ? "opacity-40 cursor-not-allowed" : ""
               }`}
             >
-              <div className="flex items-center gap-2.5">
-                <Wand2 className="w-4 h-4" />
-                <span>Resume Bullets</span>
+              <div className="flex items-center gap-2">
+                <Wand2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span className="text-xs">Resume Bullets</span>
               </div>
               {weakCount > 0 && (
                 <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                    activeSection === "bullets"
-                      ? "bg-[#5E2B0C] text-amber-100"
-                      : "bg-stone-100 text-stone-600"
-                  }`}
+                  style={{
+                    backgroundColor: activeSection === "bullets" ? "var(--navy-700)" : "var(--weak-bg)",
+                    color: activeSection === "bullets" ? "var(--surface)" : "var(--weak)",
+                    borderColor: activeSection === "bullets" ? "rgba(255,255,255,0.2)" : "var(--weak-border)",
+                  }}
+                  className="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded font-semibold border"
                 >
-                  {weakCount}
+                  ~ {weakCount} Weak
                 </span>
               )}
             </button>
@@ -967,27 +1044,28 @@ export default function ResumeGapAnalyzerPage() {
             <button
               onClick={() => finalOutput && setActiveSection("interview")}
               disabled={!finalOutput}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition cursor-pointer font-medium ${
-                !finalOutput ? "opacity-40 cursor-not-allowed text-stone-400" : ""
-              } ${
-                activeSection === "interview"
-                  ? "bg-[#78350F] text-white shadow-xs font-semibold"
-                  : "text-stone-700 hover:bg-stone-50"
+              style={{
+                backgroundColor: activeSection === "interview" ? "var(--navy-900)" : "transparent",
+                color: activeSection === "interview" ? "var(--surface)" : "var(--text-muted)",
+              }}
+              className={`shrink-0 lg:w-full flex items-center justify-between gap-2 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] whitespace-nowrap ${
+                !finalOutput ? "opacity-40 cursor-not-allowed" : ""
               }`}
             >
-              <div className="flex items-center gap-2.5">
-                <MessageSquare className="w-4 h-4" />
-                <span>Interview Defense</span>
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span className="text-xs">Interview Defense</span>
               </div>
               {insights?.interview_questions && (
                 <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                    activeSection === "interview"
-                      ? "bg-[#5E2B0C] text-amber-100"
-                      : "bg-stone-100 text-stone-600"
-                  }`}
+                  style={{
+                    backgroundColor: activeSection === "interview" ? "var(--navy-700)" : "var(--navy-50)",
+                    color: activeSection === "interview" ? "var(--surface)" : "var(--navy-900)",
+                    borderColor: activeSection === "interview" ? "rgba(255,255,255,0.2)" : "var(--border)",
+                  }}
+                  className="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded font-semibold border"
                 >
-                  {insights.interview_questions.length}
+                  {insights.interview_questions.length} Qs
                 </span>
               )}
             </button>
@@ -1000,21 +1078,27 @@ export default function ResumeGapAnalyzerPage() {
           {/* UPPER BODY SECTION: Role Readiness Score + Copy + Download PDF           */}
           {/* ========================================================================= */}
           {finalOutput && (activeSection === "roadmap" || activeSection === "bullets" || activeSection === "interview") && (
-            <div className="p-5 sm:p-6 rounded-3xl bg-white border border-[#E7DFD5] shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-[#FEF9EE] border border-amber-200 flex flex-col items-center justify-center text-amber-900 shrink-0 shadow-2xs">
-                  <span className="text-xl font-black leading-none">
+            <div
+              style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+              className="p-4 sm:p-6 rounded-[12px] border shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-shadow flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-5"
+            >
+              <div className="flex items-start sm:items-center gap-3 sm:gap-4">
+                <div
+                  style={{ backgroundColor: "var(--navy-50)", borderColor: "var(--border)", color: "var(--navy-900)" }}
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border flex flex-col items-center justify-center shrink-0 shadow-2xs"
+                >
+                  <span className="text-lg sm:text-xl font-black leading-none">
                     {insights?.match_score ?? 74}%
                   </span>
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-amber-800 mt-0.5">
+                  <span style={{ color: "var(--text-muted)" }} className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider mt-0.5">
                     Match
                   </span>
                 </div>
                 <div>
-                  <h3 className="text-sm sm:text-base font-bold text-stone-900">
+                  <h3 style={{ color: "var(--navy-900)" }} className="text-sm sm:text-base font-bold">
                     Role Readiness: {insights?.match_score ?? 74}%
                   </h3>
-                  <p className="text-xs text-stone-500 max-w-xl mt-0.5 leading-relaxed">
+                  <p style={{ color: "var(--text-muted)" }} className="text-xs max-w-xl mt-0.5 leading-relaxed">
                     {insights?.executive_summary ||
                       `High potential candidacy with ${missingCount} bridgeable engineering gaps.`}
                   </p>
@@ -1022,27 +1106,29 @@ export default function ResumeGapAnalyzerPage() {
               </div>
 
               {/* Upper Body Action Buttons: Clean Copy & Download PDF */}
-              <div className="flex items-center gap-2.5 shrink-0 self-end md:self-center">
+              <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 w-full sm:w-auto">
                 <button
                   onClick={handleCopyMarkdown}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 text-xs font-semibold shadow-2xs transition cursor-pointer"
+                  style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-xl border text-xs font-semibold shadow-2xs transition hover:bg-[var(--navy-50)] cursor-pointer"
                   title="Copy full analysis report"
                 >
                   {copied ? (
                     <>
-                      <Check className="w-3.5 h-3.5 text-emerald-700" />
+                      <Check className="w-3.5 h-3.5 text-[var(--strong)]" />
                       <span>Copied</span>
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3.5 h-3.5 text-stone-500" />
+                      <Copy className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                       <span>Copy</span>
                     </>
                   )}
                 </button>
                 <button
                   onClick={handleDownloadPDF}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#78350F] hover:bg-[#632C0D] text-xs font-semibold text-white transition cursor-pointer shadow-xs"
+                  style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold shadow-xs transition hover:bg-[var(--teal-700)] cursor-pointer"
                   title="Download printable executive PDF dossier"
                 >
                   <Printer className="w-3.5 h-3.5" />
@@ -1052,35 +1138,50 @@ export default function ResumeGapAnalyzerPage() {
             </div>
           )}
 
-          {/* PHASE 2 REVIEW STATUS BAR: No premature match percentage! */}
+          {/* PHASE 2 REVIEW STATUS BAR: Clear bucket icons and text labels */}
           {activeSection === "review" && hitlReview && !finalOutput && (
-            <div className="p-4 sm:p-5 rounded-3xl bg-white border border-[#E7DFD5] shadow-xs flex flex-wrap items-center justify-between gap-4">
+            <div
+              style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+              className="p-3.5 sm:p-5 rounded-[12px] border shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-shadow flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4"
+            >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#FEF9EE] border border-amber-200 flex items-center justify-center text-amber-800">
-                  <UserCheck className="w-5 h-5 text-amber-800" />
+                <div
+                  style={{ backgroundColor: "var(--navy-50)", borderColor: "var(--border)", color: "var(--navy-900)" }}
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl border flex items-center justify-center shrink-0"
+                >
+                  <UserCheck className="w-4 h-4 sm:w-5 sm:h-5 text-[var(--navy-900)]" />
                 </div>
                 <div>
-                  <h3 className="text-xs sm:text-sm font-bold text-stone-900">
+                  <h3 style={{ color: "var(--navy-900)" }} className="text-xs sm:text-sm font-bold">
                     Phase 2: Human Verification Active
                   </h3>
-                  <p className="text-xs text-stone-500">
+                  <p style={{ color: "var(--text-muted)" }} className="text-[11px] sm:text-xs">
                     Refine skill classifications before final 48-hour roadmap and readiness scoring.
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#FDF2F0] text-[#991B1B] border border-[#FCA5A5]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#991B1B]"></span>
-                  {hitlReview.missing.length} Gaps
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <span
+                  style={{ backgroundColor: "var(--missing-bg)", color: "var(--missing)", borderColor: "var(--missing-border)" }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-semibold border"
+                >
+                  <span className="font-bold">✕</span>
+                  <span>{hitlReview.missing.length} Missing</span>
                 </span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#FEF9EE] text-[#92400E] border border-[#FDE68A]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#D97706]"></span>
-                  {hitlReview.weak.length} Needs Proof
+                <span
+                  style={{ backgroundColor: "var(--weak-bg)", color: "var(--weak)", borderColor: "var(--weak-border)" }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-semibold border"
+                >
+                  <span className="font-bold">~</span>
+                  <span>{hitlReview.weak.length} Weak</span>
                 </span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#F0FDF4] text-[#166534] border border-[#BBF7D0]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A]"></span>
-                  {hitlReview.strong.length} Verified
+                <span
+                  style={{ backgroundColor: "var(--strong-bg)", color: "var(--strong)", borderColor: "var(--strong-border)" }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-semibold border"
+                >
+                  <span className="font-bold">✓</span>
+                  <span>{hitlReview.strong.length} Strong</span>
                 </span>
               </div>
             </div>
@@ -1088,24 +1189,30 @@ export default function ResumeGapAnalyzerPage() {
 
           {/* SECTION 1: SOURCE INGESTION */}
           {activeSection === "sources" && (
-            <div className="flex flex-col gap-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+            <div className="flex flex-col gap-4 sm:gap-6">
+              <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-stretch">
                 {/* Job Description Panel */}
-                <div className="flex flex-col h-full rounded-3xl bg-white border border-[#E8DFD3] shadow-xs overflow-hidden focus-within:border-amber-600 focus-within:ring-2 focus-within:ring-amber-500/10 transition-all">
-                  <div className="flex items-center justify-between px-4 py-3 bg-[#FAF8F5] border-b border-[#EFE8DD]">
+                <div
+                  style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                  className="flex-1 min-w-0 flex flex-col h-full rounded-[12px] border shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-shadow overflow-hidden focus-within:border-[var(--teal-600)] focus-within:ring-2 focus-within:ring-[var(--teal-600)]/20"
+                >
+                  <div style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }} className="flex items-center justify-between px-3.5 sm:px-4 py-2.5 sm:py-3 border-b">
                     <div className="flex items-center gap-2">
-                      <Briefcase className="w-4 h-4 text-amber-800" />
-                      <span className="text-xs font-bold uppercase tracking-wider text-stone-700">
+                      <Briefcase className="w-4 h-4 text-[var(--navy-900)] shrink-0" />
+                      <span style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider">
                         Target Job Description
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       {companyName && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#FEF9EE] text-[#92400E] border border-[#FDE68A]">
+                        <span
+                          style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                          className="text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md border truncate max-w-[100px] sm:max-w-none"
+                        >
                           🏢 {companyName}
                         </span>
                       )}
-                      <span className="text-[11px] font-mono text-stone-400">
+                      <span style={{ color: "var(--text-muted)" }} className="text-[11px] font-mono shrink-0">
                         {jobDescription.split(/\s+/).filter(Boolean).length} words
                       </span>
                       {jobDescription && (
@@ -1119,7 +1226,8 @@ export default function ResumeGapAnalyzerPage() {
                             setUrlFetchSuccessMsg(null);
                           }}
                           title="Clear job description and context"
-                          className="p-1 rounded text-stone-400 hover:text-stone-700 hover:bg-[#EDE5D8] transition cursor-pointer"
+                          style={{ color: "var(--text-muted)" }}
+                          className="p-1 rounded hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] transition cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1128,34 +1236,37 @@ export default function ResumeGapAnalyzerPage() {
                   </div>
 
                   {/* URL Ingestion Input Bar (LinkedIn, Greenhouse, Lever, Company URL) */}
-                  <div className="p-3 bg-[#FAF8F5]/80 border-b border-[#EFE8DD] flex flex-col gap-2.5">
+                  <div style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }} className="p-2.5 sm:p-3 border-b flex flex-col gap-2.5">
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                       <div className="relative flex-1">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400">
-                          <Globe className="w-3.5 h-3.5 text-amber-800" />
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-500">
+                          <Globe className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                         </div>
                         <input
                           type="url"
                           value={jobUrl}
                           onChange={(e) => setJobUrl(e.target.value)}
                           placeholder="Paste LinkedIn, Greenhouse, Lever, or Company URL..."
-                          className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-white border border-stone-200 text-xs text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-600 focus:border-amber-600 placeholder:text-stone-400 font-sans"
+                          style={{ backgroundColor: "var(--bg)", color: "var(--text-primary)", borderColor: "var(--border)" }}
+                          className="w-full pl-9 pr-3 py-1.5 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/40 focus:border-[var(--teal-600)] placeholder:text-[var(--text-muted)]/70 font-sans"
                         />
                       </div>
+                      {/* Outlined Teal Fetch & Contextualize Button */}
                       <button
                         type="button"
                         disabled={fetchingUrl || !jobUrl.trim()}
                         onClick={() => handleFetchJobUrl()}
-                        className="px-3.5 py-1.5 rounded-xl bg-[#78350F] hover:bg-[#632C0D] text-white text-xs font-semibold shadow-2xs transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5 shrink-0"
+                        style={{ borderColor: "var(--teal-600)", color: "var(--teal-600)" }}
+                        className="px-3.5 py-1.5 rounded-xl border bg-transparent hover:bg-[var(--teal-600)]/10 text-xs font-semibold shadow-2xs transition cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0"
                       >
                         {fetchingUrl ? (
                           <>
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-200" />
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                             <span>Fetching Platform...</span>
                           </>
                         ) : (
                           <>
-                            <Link2 className="w-3.5 h-3.5 text-amber-200" />
+                            <Link2 className="w-3.5 h-3.5" />
                             <span>Fetch & Contextualize</span>
                           </>
                         )}
@@ -1164,13 +1275,19 @@ export default function ResumeGapAnalyzerPage() {
 
                     {/* Active Connected Company Context Banner (Bulleted & Non-redundant) */}
                     {companyName && (
-                      <div className="p-3 rounded-2xl bg-[#FEF9EE] border border-amber-200/90 text-xs shadow-2xs">
-                        <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-amber-200/70">
-                          <div className="flex items-center gap-1.5 font-bold text-amber-950">
-                            <Building2 className="w-3.5 h-3.5 text-amber-800" />
-                            <span>Company Context: {companyName}</span>
+                      <div
+                        style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                        className="p-2.5 sm:p-3 rounded-xl border text-xs shadow-2xs"
+                      >
+                        <div style={{ borderColor: "var(--border)" }} className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b">
+                          <div style={{ color: "var(--navy-900)" }} className="flex items-center gap-1.5 font-bold">
+                            <Building2 className="w-3.5 h-3.5 text-[var(--navy-900)] shrink-0" />
+                            <span className="truncate">Company Context: {companyName}</span>
                             {sourcePlatform && (
-                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100/90 text-amber-900 font-semibold border border-amber-200">
+                              <span
+                                style={{ backgroundColor: "var(--surface)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                                className="text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded font-semibold border shrink-0"
+                              >
                                 {sourcePlatform}
                               </span>
                             )}
@@ -1184,7 +1301,8 @@ export default function ResumeGapAnalyzerPage() {
                               setJobDescription("");
                               setUrlFetchSuccessMsg(null);
                             }}
-                            className="text-[10px] font-semibold text-amber-800 hover:text-amber-950 underline cursor-pointer"
+                            style={{ color: "var(--text-muted)" }}
+                            className="text-[10px] font-semibold hover:text-[var(--navy-900)] hover:underline cursor-pointer shrink-0"
                           >
                             Clear
                           </button>
@@ -1197,20 +1315,20 @@ export default function ResumeGapAnalyzerPage() {
                               .map((line) => line.replace(/^[-*•\s]+/, "").trim())
                               .filter(Boolean)
                               .map((bullet, bidx) => (
-                                <div key={bidx} className="flex items-start gap-2 text-[11px] text-stone-800 leading-snug">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-700 shrink-0 mt-1.5"></span>
+                                <div key={bidx} style={{ color: "var(--text-primary)" }} className="flex items-start gap-2 text-[11px] leading-snug">
+                                  <span style={{ backgroundColor: "var(--navy-900)" }} className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5"></span>
                                   <span>{bullet}</span>
                                 </div>
                               ))}
                           </div>
                         )}
 
-                        <div className="pt-1.5 border-t border-amber-200/60 text-[10px] text-amber-900 font-semibold flex items-center justify-between">
-                          <span className="flex items-center gap-1">
-                            <Check className="w-3 h-3 text-emerald-600" />
+                        <div style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} className="pt-1.5 border-t text-[10px] font-semibold flex items-center justify-between">
+                          <span className="flex items-center gap-1 text-[var(--strong)]">
+                            <Check className="w-3 h-3 text-[var(--strong)]" />
                             <span>Context Anchored</span>
                           </span>
-                          <span className="text-stone-500 font-normal">
+                          <span style={{ color: "var(--text-muted)" }} className="font-normal hidden sm:inline">
                             Grounds "Why Company Wants" on next phase
                           </span>
                         </div>
@@ -1218,8 +1336,8 @@ export default function ResumeGapAnalyzerPage() {
                     )}
 
                     {urlFetchSuccessMsg && !companyName && (
-                      <div className="text-[11px] text-emerald-800 flex items-center gap-1">
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <div className="text-[11px] text-[var(--strong)] flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5 text-[var(--strong)]" />
                         <span>{urlFetchSuccessMsg}</span>
                       </div>
                     )}
@@ -1229,11 +1347,12 @@ export default function ResumeGapAnalyzerPage() {
                     value={jobDescription}
                     onChange={(e) => setJobDescription(e.target.value)}
                     placeholder="Paste target job requirements and duties here, or fetch directly from a URL above..."
-                    className="flex-1 w-full p-4 bg-transparent text-stone-800 text-xs sm:text-sm font-mono leading-relaxed focus:outline-none resize-none placeholder:text-stone-400 min-h-[420px]"
+                    style={{ backgroundColor: "var(--bg)", color: "var(--text-primary)" }}
+                    className="flex-1 w-full p-3 sm:p-4 text-xs sm:text-sm font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/40 focus:border-[var(--teal-600)] resize-none placeholder:text-[var(--text-muted)]/70 min-h-[260px] sm:min-h-[340px] lg:min-h-[420px]"
                   />
                 </div>
 
-                {/* Candidate Resume Panel with Proper Sized PDF Document Viewer */}
+                {/* Candidate Resume Panel: Tailored width so resume covers full width and height is scrollable */}
                 <div
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -1241,21 +1360,19 @@ export default function ResumeGapAnalyzerPage() {
                   }}
                   onDragLeave={() => setIsDragOver(false)}
                   onDrop={onDropFile}
-                  className={`flex flex-col h-full rounded-3xl bg-white border transition-all shadow-xs overflow-hidden ${
-                    isDragOver
-                      ? "border-amber-600 ring-4 ring-amber-100 bg-amber-50/20"
-                      : "border-[#E8DFD3] focus-within:border-amber-600"
-                  }`}
+                  style={{ backgroundColor: "var(--surface)", borderColor: isDragOver ? "var(--teal-600)" : "var(--border)" }}
+                  className="w-full lg:w-[410px] xl:w-[430px] shrink-0 flex flex-col h-full rounded-[12px] border transition-all shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] overflow-hidden focus-within:border-[var(--teal-600)]"
                 >
-                  <div className="flex items-center justify-between px-4 py-2.5 bg-[#FAF8F5] border-b border-[#EFE8DD] flex-wrap gap-2">
+                  {/* Clean, Streamlined Header */}
+                  <div style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }} className="flex items-center justify-between px-3.5 sm:px-4 py-2 sm:py-2.5 border-b">
                     <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-amber-800" />
-                      <span className="text-xs font-bold uppercase tracking-wider text-stone-700">
+                      <FileText className="w-4 h-4 text-[var(--navy-900)] shrink-0" />
+                      <span style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider">
                         Candidate Resume
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -1264,137 +1381,167 @@ export default function ResumeGapAnalyzerPage() {
                         className="hidden"
                       />
 
-                      {/* PDF / Text View Mode Switcher if PDF is loaded */}
-                      {pdfUrl && (
-                        <div className="flex items-center gap-1 p-0.5 bg-stone-100 rounded-lg border border-stone-200 text-xs">
+                      {!pdfUrl ? (
+                        /* Single Primary Upload Button when empty */
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingFile}
+                          style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition hover:bg-[var(--teal-700)] cursor-pointer disabled:opacity-50"
+                        >
+                          {uploadingFile ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              <span>Parsing...</span>
+                            </>
+                          ) : (
+                            <>
+                              <FileUp className="w-3.5 h-3.5" />
+                              <span>Upload PDF</span>
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        /* Compact, Minimal Controls when Resume is loaded */
+                        <>
+                          {/* Segmented View Mode Toggle */}
+                          <div
+                            style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                            className="flex items-center p-0.5 rounded-lg border text-[11px]"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setPdfViewMode("preview")}
+                              style={{
+                                backgroundColor: pdfViewMode === "preview" ? "var(--navy-900)" : "transparent",
+                                color: pdfViewMode === "preview" ? "var(--surface)" : "var(--text-muted)",
+                              }}
+                              className="px-2 py-0.5 rounded-md font-semibold transition cursor-pointer"
+                            >
+                              PDF
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPdfViewMode("text")}
+                              style={{
+                                backgroundColor: pdfViewMode === "text" ? "var(--navy-900)" : "transparent",
+                                color: pdfViewMode === "text" ? "var(--surface)" : "var(--text-muted)",
+                              }}
+                              className="px-2 py-0.5 rounded-md font-semibold transition cursor-pointer"
+                            >
+                              Text
+                            </button>
+                          </div>
+
+                          {/* Quick Icon Actions */}
                           <button
                             type="button"
-                            onClick={() => setPdfViewMode("preview")}
-                            className={`px-2 py-0.5 rounded-md font-semibold text-[11px] transition cursor-pointer ${
-                              pdfViewMode === "preview"
-                                ? "bg-white text-stone-900 shadow-2xs"
-                                : "text-stone-500 hover:text-stone-900"
-                            }`}
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadingFile}
+                            title="Replace / Upload new PDF"
+                            style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}
+                            className="p-1.5 rounded-lg border hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] transition cursor-pointer disabled:opacity-50"
                           >
-                            PDF View
+                            {uploadingFile ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-[var(--teal-600)]" />
+                            ) : (
+                              <FileUp className="w-3.5 h-3.5" />
+                            )}
                           </button>
+
+                          <a
+                            href={pdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Open original PDF in new tab"
+                            style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}
+                            className="p-1.5 rounded-lg border hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] transition cursor-pointer"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+
                           <button
-                            type="button"
-                            onClick={() => setPdfViewMode("text")}
-                            className={`px-2 py-0.5 rounded-md font-semibold text-[11px] transition cursor-pointer ${
-                              pdfViewMode === "text"
-                                ? "bg-white text-stone-900 shadow-2xs"
-                                : "text-stone-500 hover:text-stone-900"
-                            }`}
+                            onClick={() => {
+                              setResumeText("");
+                              setUploadedFileName(null);
+                              setPdfUrl(null);
+                            }}
+                            title="Clear resume"
+                            style={{ color: "var(--text-muted)" }}
+                            className="p-1.5 rounded-lg hover:bg-[var(--missing-bg)] hover:text-[var(--missing)] transition cursor-pointer"
                           >
-                            Text View
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        </div>
+                        </>
                       )}
-
-                      {/* PDF Upload Button */}
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingFile}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white hover:bg-stone-50 border border-stone-200 text-amber-900 text-xs font-semibold shadow-xs transition cursor-pointer disabled:opacity-50"
-                      >
-                        {uploadingFile ? (
-                          <>
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-700" />
-                            <span>Parsing...</span>
-                          </>
-                        ) : (
-                          <>
-                            <FileUp className="w-3.5 h-3.5 text-amber-700" />
-                            <span>Upload PDF</span>
-                          </>
-                        )}
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setResumeText("");
-                          setUploadedFileName(null);
-                          setPdfUrl(null);
-                        }}
-                        title="Clear resume"
-                        className="p-1 rounded text-stone-400 hover:text-stone-700 hover:bg-[#EDE5D8] transition cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   </div>
 
-                  {/* Uploaded File Notification Tag */}
-                  {uploadedFileName && (
-                    <div className="px-4 py-1.5 bg-amber-50/70 border-b border-amber-100 flex items-center justify-between text-xs text-amber-900">
-                      <div className="flex items-center gap-1.5">
-                        <FileCheck className="w-3.5 h-3.5 text-emerald-700" />
-                        <span className="font-semibold">Document:</span>
-                        <span className="font-mono truncate max-w-[240px]">
-                          {uploadedFileName}
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-stone-500">
-                        {resumeText.split(/\s+/).filter(Boolean).length} words extracted
-                      </span>
-                    </div>
-                  )}
-
-                  {/* PDF Document Viewer (Shows actual PDF with comfortable height and interactive frame) */}
+                  {/* Full Width & Breadth Resume PDF Viewer (Zero Grey Canvas) */}
                   {pdfUrl && pdfViewMode === "preview" ? (
-                    <div className="flex-1 w-full min-h-[520px] h-[600px] bg-stone-100 flex flex-col relative border-b border-stone-200">
-                      <div className="px-3.5 py-1.5 bg-stone-200/70 border-b border-stone-300/80 flex items-center justify-between text-[11px] text-stone-600">
-                        <span className="font-semibold text-stone-700 flex items-center gap-1.5">
-                          <FileText className="w-3.5 h-3.5 text-amber-800" />
-                          <span>PDF Viewer</span>
-                        </span>
-                        <span className="text-[10px] text-stone-500 font-mono">
-                          Page Navigation & Zoom Active
-                        </span>
-                      </div>
-                      <iframe
-                        src={pdfUrl}
-                        title="Resume PDF Document Preview"
-                        className="w-full flex-1 border-0"
-                      />
+                    <div
+                      style={{ borderColor: "var(--border)" }}
+                      className="flex-1 w-full flex flex-col relative border-b overflow-hidden bg-[var(--surface)]"
+                    >
+                      <ResumePdfViewer pdfUrl={pdfUrl} />
                     </div>
                   ) : (
                     <textarea
                       value={resumeText}
                       onChange={(e) => setResumeText(e.target.value)}
                       placeholder="Paste candidate experience or drop a PDF resume file directly here..."
-                      className="flex-1 w-full p-4 bg-transparent text-stone-800 text-xs sm:text-sm font-mono leading-relaxed focus:outline-none resize-none placeholder:text-stone-400 min-h-[420px]"
+                      style={{ backgroundColor: "var(--bg)", color: "var(--text-primary)" }}
+                      className="flex-1 w-full p-3 sm:p-4 text-xs sm:text-sm font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/40 focus:border-[var(--teal-600)] resize-none placeholder:text-[var(--text-muted)]/70 min-h-[260px] sm:min-h-[340px] lg:min-h-[420px]"
                     />
                   )}
 
-                  <div className="px-4 py-2 bg-[#FAF8F5] border-t border-[#EFE8DD] text-[11px] text-stone-500 flex items-center justify-between">
-                    <span>💡 Tip: Drop any PDF resume file directly onto this card</span>
-                    <span className="font-mono text-stone-400">PDF, TXT, DOCX</span>
+                  {/* Clean Footer with Document Status */}
+                  <div style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }} className="px-3.5 sm:px-4 py-2 border-t text-[11px] flex items-center justify-between gap-2">
+                    {uploadedFileName ? (
+                      <>
+                        <span className="flex items-center gap-1.5 font-medium truncate max-w-[180px] sm:max-w-[240px]">
+                          <FileCheck className="w-3.5 h-3.5 text-[var(--strong)] shrink-0" />
+                          <span className="font-mono truncate text-[var(--navy-900)]">{uploadedFileName}</span>
+                        </span>
+                        <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0">
+                          {resumeText.split(/\s+/).filter(Boolean).length} words
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="truncate">💡 Tip: Drop any PDF resume file directly onto this card</span>
+                        <span className="font-mono shrink-0">PDF, TXT, DOCX</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
 
               {/* Sources Bottom Action Bar (Anchors bottom cleanly, no dead space) */}
-              <div className="p-4 rounded-2xl bg-white border border-[#E8DFD3] shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-2.5 text-xs text-stone-600">
-                  <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
-                  <span>
-                    Ready for audit: <strong>{jobDescription.split(/\s+/).filter(Boolean).length} words JD</strong>
+              <div
+                style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                className="p-3.5 sm:p-4 rounded-[12px] border shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-shadow flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4"
+              >
+                <div style={{ color: "var(--text-muted)" }} className="flex items-center gap-2 text-xs">
+                  <span style={{ backgroundColor: "var(--teal-600)" }} className="w-2 h-2 rounded-full shadow-[0_0_6px_rgba(15,118,110,0.6)] shrink-0"></span>
+                  <span className="truncate">
+                    Ready for audit: <strong className="text-[var(--navy-900)]">{jobDescription.split(/\s+/).filter(Boolean).length}w JD</strong>
                     {companyName ? ` (${companyName})` : ""} &bull;{" "}
-                    <strong>{uploadedFileName ? uploadedFileName : `${resumeText.split(/\s+/).filter(Boolean).length} words Resume`}</strong>
+                    <strong className="text-[var(--navy-900)]">{uploadedFileName ? uploadedFileName : `${resumeText.split(/\s+/).filter(Boolean).length}w Resume`}</strong>
                   </span>
                 </div>
 
+                {/* Prominent Solid Teal CTA Button */}
                 <button
                   onClick={handleStartAnalysis}
                   disabled={loading}
-                  className="w-full sm:w-auto flex items-center justify-center gap-2.5 px-8 py-3 rounded-2xl bg-[#78350F] hover:bg-[#632C0D] text-white font-semibold text-sm tracking-wide shadow-md shadow-amber-950/15 transition-all cursor-pointer disabled:opacity-50"
+                  style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 sm:px-8 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm tracking-wide shadow-md transition-all hover:bg-[var(--teal-700)] cursor-pointer disabled:opacity-50 active:scale-[0.99] shrink-0"
                 >
                   {loading ? (
                     <>
-                      <RefreshCw className="w-4 h-4 animate-spin text-amber-100" />
+                      <RefreshCw className="w-4 h-4 animate-spin text-[var(--surface)]" />
                       <span>Auditing Skills with LLM...</span>
                     </>
                   ) : (
@@ -1410,48 +1557,63 @@ export default function ResumeGapAnalyzerPage() {
 
           {/* SECTION 2: SKILL RECLASSIFICATION (MIDDLE PAGE / HITL REVIEW) */}
           {activeSection === "review" && hitlReview && (
-            <section className="bg-white border border-[#E7DFD5] rounded-3xl p-6 sm:p-8 shadow-xs relative overflow-hidden transition-all">
-              {/* Top Amber Accent Line */}
-              <div className="absolute top-0 left-0 right-0 h-1 bg-[#78350F]" />
+            <section
+              style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+              className="border rounded-[12px] p-4 sm:p-6 lg:p-8 shadow-[0_1px_3px_rgba(15,31,61,0.08)] relative overflow-hidden transition-all"
+            >
+              {/* Top Navy Accent Line */}
+              <div style={{ backgroundColor: "var(--navy-900)" }} className="absolute top-0 left-0 right-0 h-1.5" />
 
-              {/* Panel Title & Status (Removed Phase 2 Tuning tag as requested) */}
-              <div className="flex items-center justify-between flex-wrap gap-4 pb-5 mb-6 border-b border-stone-100">
+              {/* Panel Title & Status */}
+              <div style={{ borderColor: "var(--border)" }} className="flex items-center justify-between flex-wrap gap-4 pb-4 sm:pb-5 mb-5 sm:mb-6 border-b">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-[#FAF8F5] border border-[#EFE8DD] flex items-center justify-center text-amber-900 shadow-xs">
-                    <UserCheck className="w-5 h-5 text-amber-800" />
+                  <div
+                    style={{ backgroundColor: "var(--navy-50)", borderColor: "var(--border)", color: "var(--navy-900)" }}
+                    className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl border flex items-center justify-center shadow-xs shrink-0"
+                  >
+                    <UserCheck className="w-4 h-4 sm:w-5 sm:h-5 text-[var(--navy-900)]" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-base sm:text-lg font-bold text-stone-900 tracking-tight">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 style={{ color: "var(--navy-900)" }} className="text-sm sm:text-base lg:text-lg font-bold tracking-tight">
                         Skill Reclassification & Verification
                       </h2>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#FEF9EE] text-[#92400E] border border-[#FDE68A]">
+                      <span
+                        style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                        className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border"
+                      >
                         Human-in-the-Loop
                       </span>
                     </div>
-                    <p className="text-xs text-stone-500 mt-0.5">
+                    <p style={{ color: "var(--text-muted)" }} className="text-xs mt-0.5">
                       Review AI-detected skills. Reclassify between categories using the interactive chips or provide custom natural language guidance below.
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* 3 Refined Vertical Columns for Moving Skills (Unified Editorial Theme) */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
-                {/* Column 1: Missing Skills */}
-                <div className="p-4.5 rounded-2xl bg-[#FDFBF7] border border-[#EFE8DD] flex flex-col justify-between shadow-2xs">
+              {/* 3 Refined Columns for Moving Skills with Clear Bucket Icons and Colors */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
+                {/* Column 1: Missing Skills (✕ Missing) */}
+                <div
+                  style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                  className="p-3.5 sm:p-4.5 rounded-[12px] border flex flex-col justify-between shadow-2xs"
+                >
                   <div>
-                    <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-stone-200">
-                      <div className="flex items-center gap-2 text-stone-900 text-xs font-bold uppercase tracking-wider">
-                        <span className="w-2 h-2 rounded-full bg-[#991B1B]"></span>
+                    <div style={{ borderColor: "var(--border)" }} className="flex items-center justify-between pb-2.5 mb-2.5 border-b">
+                      <div className="flex items-center gap-2 text-[var(--missing)] text-xs font-bold uppercase tracking-wider">
+                        <span className="font-black text-sm">✕</span>
                         <span>Missing Gaps</span>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full bg-[#FDF2F0] text-[#991B1B] text-xs font-bold border border-[#FCA5A5]">
+                      <span
+                        style={{ backgroundColor: "var(--missing-bg)", color: "var(--missing)", borderColor: "var(--missing-border)" }}
+                        className="px-2 py-0.5 rounded-full text-xs font-bold border"
+                      >
                         {hitlReview.missing.length}
                       </span>
                     </div>
-                    <p className="text-[11px] text-stone-500 mb-3">
-                      Zero evidence in submitted resume. Requires 48-hr proof project.
+                    <p style={{ color: "var(--text-muted)" }} className="text-[11px] mb-3">
+                       Zero evidence in submitted resume. Requires 48-hr proof project.
                     </p>
 
                     <div className="flex flex-col gap-2">
@@ -1459,33 +1621,39 @@ export default function ResumeGapAnalyzerPage() {
                         hitlReview.missing.map((s, i) => (
                           <div
                             key={i}
-                            className="p-2.5 bg-white border border-stone-200 rounded-xl shadow-2xs flex items-center justify-between gap-2 group hover:border-stone-300 transition"
+                            style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                            className="p-2 sm:p-2.5 border rounded-lg shadow-2xs flex items-center justify-between gap-1.5 sm:gap-2 group hover:border-[var(--navy-900)] transition"
                           >
-                            <span className="text-xs font-semibold text-stone-900 font-mono truncate">
+                            <span style={{ color: "var(--navy-900)" }} className="text-xs font-semibold font-mono truncate min-w-0 flex-1">
                               {s}
                             </span>
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 onClick={() => handleMoveSkill(s, "missing", "weak")}
                                 title="Promote to Weak / Needs Proof"
-                                className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[#FEF9EE] text-[#92400E] hover:bg-amber-100 border border-[#FDE68A] transition cursor-pointer flex items-center gap-0.5"
+                                style={{ backgroundColor: "var(--surface)", color: "var(--weak)", borderColor: "var(--border)" }}
+                                className="px-2 py-0.5 rounded-md text-[10px] font-semibold border transition cursor-pointer flex items-center gap-0.5 hover:bg-[var(--weak-bg)]"
                               >
-                                <span>+ Weak</span>
+                                <span>~ Weak</span>
                                 <ArrowUpRight className="w-3 h-3" />
                               </button>
                               <button
                                 onClick={() => handleMoveSkill(s, "missing", "strong")}
                                 title="Promote to Verified Strong"
-                                className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[#F0FDF4] text-[#166534] hover:bg-emerald-100 border border-[#BBF7D0] transition cursor-pointer flex items-center gap-0.5"
+                                style={{ backgroundColor: "var(--surface)", color: "var(--strong)", borderColor: "var(--border)" }}
+                                className="px-2 py-0.5 rounded-md text-[10px] font-semibold border transition cursor-pointer flex items-center gap-0.5 hover:bg-[var(--strong-bg)]"
                               >
-                                <span>+ Strong</span>
+                                <span>✓ Strong</span>
                                 <ArrowUpRight className="w-3 h-3" />
                               </button>
                             </div>
                           </div>
                         ))
                       ) : (
-                        <div className="p-4 rounded-xl border border-dashed border-stone-200 bg-white/60 text-center text-xs text-stone-400 italic">
+                        <div
+                          style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
+                          className="p-4 rounded-lg border border-dashed text-center text-xs italic"
+                        >
                           No missing gaps detected
                         </div>
                       )}
@@ -1493,19 +1661,25 @@ export default function ResumeGapAnalyzerPage() {
                   </div>
                 </div>
 
-                {/* Column 2: Weak / Needs Proof */}
-                <div className="p-4.5 rounded-2xl bg-[#FDFBF7] border border-[#EFE8DD] flex flex-col justify-between shadow-2xs">
+                {/* Column 2: Weak / Needs Proof (~ Weak) */}
+                <div
+                  style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                  className="p-3.5 sm:p-4.5 rounded-[12px] border flex flex-col justify-between shadow-2xs"
+                >
                   <div>
-                    <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-stone-200">
-                      <div className="flex items-center gap-2 text-stone-900 text-xs font-bold uppercase tracking-wider">
-                        <span className="w-2 h-2 rounded-full bg-[#D97706]"></span>
+                    <div style={{ borderColor: "var(--border)" }} className="flex items-center justify-between pb-2.5 mb-2.5 border-b">
+                      <div className="flex items-center gap-2 text-[var(--weak)] text-xs font-bold uppercase tracking-wider">
+                        <span className="font-black text-sm">~</span>
                         <span>Needs Proof</span>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full bg-[#FEF9EE] text-[#92400E] text-xs font-bold border border-[#FDE68A]">
+                      <span
+                        style={{ backgroundColor: "var(--weak-bg)", color: "var(--weak)", borderColor: "var(--weak-border)" }}
+                        className="px-2 py-0.5 rounded-full text-xs font-bold border"
+                      >
                         {hitlReview.weak.length}
                       </span>
                     </div>
-                    <p className="text-[11px] text-stone-500 mb-3">
+                    <p style={{ color: "var(--text-muted)" }} className="text-[11px] mb-3">
                       Mentioned superficially; needs quantified XYZ bullet rewrites.
                     </p>
 
@@ -1514,33 +1688,39 @@ export default function ResumeGapAnalyzerPage() {
                         hitlReview.weak.map((s, i) => (
                           <div
                             key={i}
-                            className="p-2.5 bg-white border border-stone-200 rounded-xl shadow-2xs flex items-center justify-between gap-2 group hover:border-stone-300 transition"
+                            style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                            className="p-2 sm:p-2.5 border rounded-lg shadow-2xs flex items-center justify-between gap-1.5 sm:gap-2 group hover:border-[var(--navy-900)] transition"
                           >
-                            <span className="text-xs font-semibold text-stone-900 font-mono truncate">
+                            <span style={{ color: "var(--navy-900)" }} className="text-xs font-semibold font-mono truncate min-w-0 flex-1">
                               {s}
                             </span>
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 onClick={() => handleMoveSkill(s, "weak", "missing")}
                                 title="Demote to Missing Gap"
-                                className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[#FDF2F0] text-[#991B1B] hover:bg-rose-100 border border-[#FCA5A5] transition cursor-pointer flex items-center gap-0.5"
+                                style={{ backgroundColor: "var(--surface)", color: "var(--missing)", borderColor: "var(--border)" }}
+                                className="px-2 py-0.5 rounded-md text-[10px] font-semibold border transition cursor-pointer flex items-center gap-0.5 hover:bg-[var(--missing-bg)]"
                               >
-                                <span>- Gap</span>
+                                <span>✕ Gap</span>
                                 <ArrowDownRight className="w-3 h-3" />
                               </button>
                               <button
                                 onClick={() => handleMoveSkill(s, "weak", "strong")}
                                 title="Promote to Verified Strong"
-                                className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[#F0FDF4] text-[#166534] hover:bg-emerald-100 border border-[#BBF7D0] transition cursor-pointer flex items-center gap-0.5"
+                                style={{ backgroundColor: "var(--surface)", color: "var(--strong)", borderColor: "var(--border)" }}
+                                className="px-2 py-0.5 rounded-md text-[10px] font-semibold border transition cursor-pointer flex items-center gap-0.5 hover:bg-[var(--strong-bg)]"
                               >
-                                <span>+ Strong</span>
+                                <span>✓ Strong</span>
                                 <ArrowUpRight className="w-3 h-3" />
                               </button>
                             </div>
                           </div>
                         ))
                       ) : (
-                        <div className="p-4 rounded-xl border border-dashed border-stone-200 bg-white/60 text-center text-xs text-stone-400 italic">
+                        <div
+                          style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
+                          className="p-4 rounded-lg border border-dashed text-center text-xs italic"
+                        >
                           No weak skills detected
                         </div>
                       )}
@@ -1548,19 +1728,25 @@ export default function ResumeGapAnalyzerPage() {
                   </div>
                 </div>
 
-                {/* Column 3: Verified Strong */}
-                <div className="p-4.5 rounded-2xl bg-[#FDFBF7] border border-[#EFE8DD] flex flex-col justify-between shadow-2xs">
+                {/* Column 3: Verified Strong (✓ Strong) */}
+                <div
+                  style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                  className="p-3.5 sm:p-4.5 rounded-[12px] border flex flex-col justify-between shadow-2xs md:col-span-2 lg:col-span-1"
+                >
                   <div>
-                    <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-stone-200">
-                      <div className="flex items-center gap-2 text-stone-900 text-xs font-bold uppercase tracking-wider">
-                        <span className="w-2 h-2 rounded-full bg-[#16A34A]"></span>
+                    <div style={{ borderColor: "var(--border)" }} className="flex items-center justify-between pb-2.5 mb-2.5 border-b">
+                      <div className="flex items-center gap-2 text-[var(--strong)] text-xs font-bold uppercase tracking-wider">
+                        <span className="font-black text-sm">✓</span>
                         <span>Verified Strong</span>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full bg-[#F0FDF4] text-[#166534] text-xs font-bold border border-[#BBF7D0]">
+                      <span
+                        style={{ backgroundColor: "var(--strong-bg)", color: "var(--strong)", borderColor: "var(--strong-border)" }}
+                        className="px-2 py-0.5 rounded-full text-xs font-bold border"
+                      >
                         {hitlReview.strong.length}
                       </span>
                     </div>
-                    <p className="text-[11px] text-stone-500 mb-3">
+                    <p style={{ color: "var(--text-muted)" }} className="text-[11px] mb-3">
                       Directly validated by strong evidence and hands-on projects.
                     </p>
 
@@ -1569,23 +1755,28 @@ export default function ResumeGapAnalyzerPage() {
                         hitlReview.strong.map((s, i) => (
                           <div
                             key={i}
-                            className="p-2.5 bg-white border border-stone-200 rounded-xl shadow-2xs flex items-center justify-between gap-2 group hover:border-stone-300 transition"
+                            style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                            className="p-2 sm:p-2.5 border rounded-lg shadow-2xs flex items-center justify-between gap-1.5 sm:gap-2 group hover:border-[var(--navy-900)] transition"
                           >
-                            <span className="text-xs font-semibold text-stone-900 font-mono truncate">
+                            <span style={{ color: "var(--navy-900)" }} className="text-xs font-semibold font-mono truncate min-w-0 flex-1">
                               {s}
                             </span>
                             <button
                               onClick={() => handleMoveSkill(s, "strong", "weak")}
                               title="Demote to Weak / Needs Proof"
-                              className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[#FEF9EE] text-[#92400E] hover:bg-amber-100 border border-[#FDE68A] transition cursor-pointer flex items-center gap-0.5 shrink-0"
+                              style={{ backgroundColor: "var(--surface)", color: "var(--weak)", borderColor: "var(--border)" }}
+                              className="px-2 py-0.5 rounded-md text-[10px] font-semibold border transition cursor-pointer flex items-center gap-0.5 shrink-0 hover:bg-[var(--weak-bg)]"
                             >
-                              <span>- Weak</span>
+                              <span>~ Weak</span>
                               <ArrowDownRight className="w-3 h-3" />
                             </button>
                           </div>
                         ))
                       ) : (
-                        <div className="p-4 rounded-xl border border-dashed border-stone-200 bg-white/60 text-center text-xs text-stone-400 italic">
+                        <div
+                          style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
+                          className="p-4 rounded-lg border border-dashed text-center text-xs italic"
+                        >
                           No strong skills verified yet
                         </div>
                       )}
@@ -1595,20 +1786,24 @@ export default function ResumeGapAnalyzerPage() {
               </div>
 
               {/* Natural Language Adjustment Input Box */}
-              <div className="bg-[#FAF8F5] border border-stone-200 p-4 sm:p-5 rounded-2xl mb-6 shadow-2xs">
+              <div
+                style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                className="p-4 sm:p-5 rounded-[12px] mb-6 shadow-2xs border"
+              >
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-stone-800 flex items-center gap-2">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-amber-800" />
+                  <label style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--navy-900)]" />
                     <span>Custom Human Guidance & Context</span>
                   </label>
-                  <span className="text-[11px] text-stone-400 font-mono">Optional</span>
+                  <span style={{ color: "var(--text-muted)" }} className="text-[11px] font-mono">Optional</span>
                 </div>
                 <input
                   type="text"
                   value={userAdjustment}
                   onChange={(e) => setUserAdjustment(e.target.value)}
                   placeholder="e.g. 'I used Redis extensively for session tokens at my previous role; treat as strong'..."
-                  className="w-full px-4 py-2.5 bg-white border border-stone-300 rounded-xl text-stone-900 text-xs sm:text-sm focus:outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-500/10 transition placeholder:text-stone-400"
+                  style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                  className="w-full px-4 py-2.5 rounded-xl border text-xs sm:text-sm focus:outline-none focus:border-[var(--teal-600)] focus:ring-2 focus:ring-[var(--teal-600)]/40 transition placeholder:text-[var(--text-muted)]/70"
                 />
               </div>
 
@@ -1617,18 +1812,20 @@ export default function ResumeGapAnalyzerPage() {
                 <button
                   onClick={() => handleResumeAnalysis("")}
                   disabled={loading}
-                  className="w-full sm:w-auto px-6 py-3 rounded-xl border border-stone-300 hover:bg-[#F5EFE7] text-stone-700 text-xs sm:text-sm font-semibold tracking-wide transition cursor-pointer"
+                  style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                  className="w-full sm:w-auto px-6 py-3 rounded-xl border text-xs sm:text-sm font-semibold tracking-wide transition cursor-pointer hover:bg-[var(--navy-50)]"
                 >
                   Approve As Is
                 </button>
                 <button
                   onClick={() => handleResumeAnalysis()}
                   disabled={loading}
-                  className="w-full sm:w-auto flex items-center justify-center gap-2.5 px-7 py-3 rounded-xl bg-[#78350F] hover:bg-[#632C0D] text-white text-xs sm:text-sm font-bold shadow-md shadow-amber-950/15 transition cursor-pointer disabled:opacity-50"
+                  style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2.5 px-7 py-3 rounded-xl text-xs sm:text-sm font-bold shadow-md transition hover:bg-[var(--teal-700)] cursor-pointer disabled:opacity-50"
                 >
                   {loading ? (
                     <>
-                      <RefreshCw className="w-4 h-4 animate-spin text-amber-100" />
+                      <RefreshCw className="w-4 h-4 animate-spin text-[var(--surface)]" />
                       <span>Generating 48-Hour Roadmap...</span>
                     </>
                   ) : (
@@ -1642,7 +1839,7 @@ export default function ResumeGapAnalyzerPage() {
             </section>
           )}
 
-          {/* SECTION 3: 48-HOUR ROADMAP (ALL 3 VERTICAL CARDS IN HARMONIOUS UNIFIED STYLE) */}
+          {/* SECTION 3: 48-HOUR ROADMAP (ALL 3 VERTICAL CARDS IN HARMONIOUS ANALYTICAL STYLE) */}
           {activeSection === "roadmap" && finalOutput && (
             <div className="space-y-6">
               {insights?.missing_roadmap && insights.missing_roadmap.length > 0 ? (
@@ -1651,24 +1848,34 @@ export default function ResumeGapAnalyzerPage() {
                   return (
                     <div
                       key={idx}
-                      className="rounded-3xl border border-[#E7DFD5] bg-white overflow-hidden shadow-xs hover:shadow-sm transition-all"
+                      style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                      className="rounded-[12px] border overflow-hidden shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-all"
                     >
                       {/* Skill Card Header */}
-                      <div className="p-4 sm:p-5 bg-gradient-to-r from-[#FAF8F5] via-white to-[#FAF8F5] border-b border-[#EFE8DD] flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                          <span className="w-7 h-7 rounded-xl bg-[#78350F] text-amber-50 flex items-center justify-center text-xs font-bold shrink-0">
+                      <div
+                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                        className="p-3.5 sm:p-5 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4"
+                      >
+                        <div className="flex items-center gap-2.5 sm:gap-3">
+                          <span
+                            style={{ backgroundColor: "var(--navy-900)", color: "var(--surface)" }}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
+                          >
                             {idx + 1}
                           </span>
                           <div>
-                            <div className="flex items-center gap-2">
-                              <h4 className="text-base font-bold text-stone-900 font-mono">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 style={{ color: "var(--navy-900)" }} className="text-sm sm:text-base font-bold font-mono">
                                 {item.skill}
                               </h4>
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FDF2F0] text-[#991B1B] border border-[#FCA5A5] uppercase tracking-wider">
-                                Gap Deliverable
+                              <span
+                                style={{ backgroundColor: "var(--missing-bg)", color: "var(--missing)", borderColor: "var(--missing-border)" }}
+                                className="px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider"
+                              >
+                                ✕ Gap Deliverable
                               </span>
                             </div>
-                            <p className="text-xs text-stone-500 mt-0.5">
+                            <p style={{ color: "var(--text-muted)" }} className="text-xs mt-0.5">
                               Addressed via 48-hr proof deliverable & experience anchor
                             </p>
                           </div>
@@ -1682,44 +1889,54 @@ export default function ResumeGapAnalyzerPage() {
                               `48-Hour PoC Project for ${item.skill}:\n${item.bridge_project}\n\nResume Anchor Project:\n${bridge.project}\n\nResume Bridge Angle:\n${bridge.pitch}`
                             );
                           }}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
-                            isProjectCopied
-                              ? "bg-emerald-50 border-emerald-200 text-emerald-800 shadow-2xs"
-                              : "bg-white hover:bg-stone-50 border-stone-200 text-stone-700 shadow-2xs"
-                          }`}
+                          style={{
+                            backgroundColor: isProjectCopied ? "var(--navy-50)" : "var(--surface)",
+                            borderColor: isProjectCopied ? "var(--strong)" : "var(--border)",
+                            color: isProjectCopied ? "var(--strong)" : "var(--text-primary)",
+                          }}
+                          className="self-end sm:self-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer hover:bg-[var(--navy-50)] shadow-2xs shrink-0"
                         >
                           {isProjectCopied ? (
                             <>
-                              <Check className="w-3.5 h-3.5 text-emerald-700" />
+                              <Check className="w-3.5 h-3.5 text-[var(--strong)]" />
                               <span>Copied PoC</span>
                             </>
                           ) : (
                             <>
-                              <Copy className="w-3.5 h-3.5 text-stone-500" />
+                              <Copy className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                               <span>Copy Roadmap</span>
                             </>
                           )}
                         </button>
                       </div>
 
-                      {/* 3 VERTICAL CARDS SIDE-BY-SIDE: UNIFIED COHESIVE STYLING (NO ORANGE BORDER) */}
-                      <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4.5">
+                      {/* 3 VERTICAL CARDS: UNIFIED ANALYTICAL STYLING */}
+                      <div className="p-3.5 sm:p-5 grid grid-cols-1 lg:grid-cols-3 gap-3.5 sm:gap-4.5">
                         {/* Vertical Card 1: Why Company Wants This (Context Grounded) */}
-                        <div className="p-4.5 rounded-2xl bg-[#FDFBF7] border border-[#E7DFD5] flex flex-col justify-between shadow-2xs hover:border-stone-300 transition">
+                        <div
+                          style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                          className="p-3.5 sm:p-4.5 rounded-[12px] border flex flex-col justify-between shadow-2xs hover:border-[var(--navy-900)] transition"
+                        >
                           <div>
                             <div className="flex items-center justify-between gap-2 mb-2.5">
                               <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-lg bg-[#FEF9EE] text-[#92400E] border border-[#FDE68A] flex items-center justify-center shrink-0">
-                                  <Building2 className="w-3.5 h-3.5" />
+                                <div
+                                  style={{ backgroundColor: "var(--surface)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                                  className="w-6 h-6 rounded-lg border flex items-center justify-center shrink-0"
+                                >
+                                  <Building2 className="w-3.5 h-3.5 text-[var(--navy-900)]" />
                                 </div>
-                                <span className="text-xs font-bold text-stone-900 uppercase tracking-wider">
+                                <span style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider">
                                   {companyName || insights?.company_name
                                     ? `Why ${(companyName || insights?.company_name)?.toUpperCase()} Wants`
                                     : "Why Company Wants"}
                                 </span>
                               </div>
                               {(companyName || insights?.company_name) && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-200">
+                                <span
+                                  style={{ backgroundColor: "var(--surface)", color: "var(--navy-700)", borderColor: "var(--border)" }}
+                                  className="text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0"
+                                >
                                   {sourcePlatform || "URL Linked"}
                                 </span>
                               )}
@@ -1730,7 +1947,8 @@ export default function ResumeGapAnalyzerPage() {
                                 {item.company_keywords.map((kw, kidx) => (
                                   <span
                                     key={kidx}
-                                    className="px-2 py-0.5 rounded-md bg-[#FAF8F5] border border-stone-200 text-stone-800 text-[10px] font-semibold"
+                                    style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-700)" }}
+                                    className="px-2 py-0.5 rounded-md border text-[10px] font-semibold"
                                   >
                                     #{kw}
                                   </span>
@@ -1738,34 +1956,40 @@ export default function ResumeGapAnalyzerPage() {
                               </div>
                             )}
 
-                            <p className="text-xs sm:text-sm text-stone-700 leading-relaxed font-sans">
+                            <p style={{ color: "var(--text-primary)" }} className="text-xs sm:text-sm opacity-90 leading-relaxed font-sans">
                               {item.why_it_matters}
                             </p>
                           </div>
 
-                          <div className="pt-3 mt-3 border-t border-stone-200/60 text-[10px] text-stone-500 font-semibold uppercase tracking-wider flex items-center justify-between">
+                          <div style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} className="pt-3 mt-3 border-t text-[10px] font-semibold uppercase tracking-wider flex items-center justify-between">
                             <span>
                               {companyName || insights?.company_name
                                 ? `${companyName || insights?.company_name} Intent`
                                 : "Hiring Manager Intent"}
                             </span>
                             {(companyName || insights?.company_name) && (
-                              <span className="text-[9px] font-bold text-emerald-800 flex items-center gap-0.5">
-                                <Check className="w-2.5 h-2.5 text-emerald-600" />
+                              <span className="text-[9px] font-bold text-[var(--strong)] flex items-center gap-0.5">
+                                <Check className="w-2.5 h-2.5 text-[var(--strong)]" />
                                 <span>Platform Grounded</span>
                               </span>
                             )}
                           </div>
                         </div>
 
-                        {/* Vertical Card 2: 48-Hour Proof-of-Concept Project (Unified Style, No Orange Border) */}
-                        <div className="p-4.5 rounded-2xl bg-[#FDFBF7] border border-[#E7DFD5] flex flex-col justify-between shadow-2xs hover:border-stone-300 transition">
+                        {/* Vertical Card 2: 48-Hour Proof-of-Concept Project */}
+                        <div
+                          style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                          className="p-3.5 sm:p-4.5 rounded-[12px] border flex flex-col justify-between shadow-2xs hover:border-[var(--navy-900)] transition"
+                        >
                           <div>
                             <div className="flex items-center gap-2 mb-2.5">
-                              <div className="w-6 h-6 rounded-lg bg-[#FEF9EE] text-[#92400E] border border-[#FDE68A] flex items-center justify-center shrink-0">
-                                <Flame className="w-3.5 h-3.5" />
+                              <div
+                                style={{ backgroundColor: "var(--surface)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                                className="w-6 h-6 rounded-lg border flex items-center justify-center shrink-0"
+                              >
+                                <Flame className="w-3.5 h-3.5 text-[var(--navy-900)]" />
                               </div>
-                              <span className="text-xs font-bold text-stone-900 uppercase tracking-wider">
+                              <span style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider">
                                 48-Hour PoC Project
                               </span>
                             </div>
@@ -1775,7 +1999,8 @@ export default function ResumeGapAnalyzerPage() {
                                 {item.project_keywords.map((kw, kidx) => (
                                   <span
                                     key={kidx}
-                                    className="px-2 py-0.5 rounded-md bg-[#FAF8F5] border border-stone-200 text-stone-800 text-[10px] font-semibold font-mono"
+                                    style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-700)" }}
+                                    className="px-2 py-0.5 rounded-md border text-[10px] font-semibold font-mono"
                                   >
                                     🛠️ {kw}
                                   </span>
@@ -1784,16 +2009,16 @@ export default function ResumeGapAnalyzerPage() {
                             )}
 
                             {/* Structured Productive Engineering Project Blueprint */}
-                            <div className="space-y-2 text-xs sm:text-sm text-stone-800 leading-relaxed font-sans">
-                              <p className="font-medium text-stone-900">
+                            <div className="space-y-2 text-xs sm:text-sm text-[var(--text-primary)] leading-relaxed font-sans">
+                              <p className="font-medium">
                                 {item.bridge_project}
                               </p>
                             </div>
                           </div>
 
-                          <div className="pt-3 mt-3 border-t border-stone-200/60 text-[10px] text-stone-500 font-semibold uppercase tracking-wider flex items-center justify-between">
+                          <div style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} className="pt-3 mt-3 border-t text-[10px] font-semibold uppercase tracking-wider flex items-center justify-between">
                             <span>Deliverable Project</span>
-                            <span className="font-mono text-stone-700 font-bold">48 Hrs</span>
+                            <span style={{ color: "var(--navy-900)" }} className="font-mono font-bold">48 Hrs</span>
                           </div>
                         </div>
 
@@ -1801,14 +2026,20 @@ export default function ResumeGapAnalyzerPage() {
                         {(() => {
                           const bridge = getBridgeData(item.skill, idx, item.transferable_from);
                           return (
-                            <div className="p-4.5 rounded-2xl bg-[#FDFBF7] border border-[#E7DFD5] flex flex-col justify-between shadow-2xs hover:border-stone-300 transition">
+                            <div
+                              style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                              className="p-3.5 sm:p-4.5 rounded-[12px] border flex flex-col justify-between shadow-2xs hover:border-[var(--navy-900)] transition"
+                            >
                               <div>
                                 <div className="flex items-center justify-between gap-2 mb-2.5">
                                   <div className="flex items-center gap-2">
-                                    <div className="w-6 h-6 rounded-lg bg-[#FEF9EE] text-[#92400E] border border-[#FDE68A] flex items-center justify-center shrink-0">
-                                      <Award className="w-3.5 h-3.5" />
+                                    <div
+                                      style={{ backgroundColor: "var(--surface)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                                      className="w-6 h-6 rounded-lg border flex items-center justify-center shrink-0"
+                                    >
+                                      <Award className="w-3.5 h-3.5 text-[var(--navy-900)]" />
                                     </div>
-                                    <span className="text-xs font-bold text-stone-900 uppercase tracking-wider">
+                                    <span style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider">
                                       Resume Bridge
                                     </span>
                                   </div>
@@ -1817,7 +2048,8 @@ export default function ResumeGapAnalyzerPage() {
                                     onClick={() =>
                                       updateBridge(item.skill, { isEditing: !bridge.isEditing })
                                     }
-                                    className="flex items-center gap-1 text-[11px] font-semibold text-amber-800 hover:text-amber-950 px-2 py-0.5 rounded-md hover:bg-[#FEF9EE] border border-amber-200/60 bg-white transition cursor-pointer"
+                                    style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-900)" }}
+                                    className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md border transition cursor-pointer hover:bg-[var(--navy-50)]"
                                   >
                                     <Pencil className="w-3 h-3" />
                                     <span>{bridge.isEditing ? "Close" : "Edit Bridge"}</span>
@@ -1827,7 +2059,7 @@ export default function ResumeGapAnalyzerPage() {
                                 {bridge.isEditing ? (
                                   <div className="space-y-3 pt-1">
                                     <div>
-                                      <label className="block text-[10px] font-bold uppercase tracking-wider text-amber-900 mb-1">
+                                      <label style={{ color: "var(--navy-900)" }} className="block text-[10px] font-bold uppercase tracking-wider mb-1">
                                         Select from Resume Projects:
                                       </label>
                                       <select
@@ -1841,7 +2073,8 @@ export default function ResumeGapAnalyzerPage() {
                                             updateBridge(item.skill, { project: e.target.value });
                                           }
                                         }}
-                                        className="w-full text-xs p-2 rounded-xl bg-white border border-stone-300 text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-600 focus:border-amber-600 truncate"
+                                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                                        className="w-full text-xs p-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/40 focus:border-[var(--teal-600)] truncate"
                                       >
                                         {detectedResumeProjects.map((p, pidx) => (
                                           <option key={pidx} value={p}>
@@ -1855,7 +2088,7 @@ export default function ResumeGapAnalyzerPage() {
                                     </div>
 
                                     <div>
-                                      <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-600 mb-1">
+                                      <label style={{ color: "var(--text-muted)" }} className="block text-[10px] font-bold uppercase tracking-wider mb-1">
                                         Project Name Anchor:
                                       </label>
                                       <input
@@ -1865,12 +2098,13 @@ export default function ResumeGapAnalyzerPage() {
                                           updateBridge(item.skill, { project: e.target.value })
                                         }
                                         placeholder="e.g. Shivay Intelligence AI Internship / FastAPI Backend"
-                                        className="w-full text-xs p-2 rounded-xl bg-white border border-stone-300 text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-600 focus:border-amber-600"
+                                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                                        className="w-full text-xs p-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/40 focus:border-[var(--teal-600)]"
                                       />
                                     </div>
 
                                     <div>
-                                      <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-600 mb-1">
+                                      <label style={{ color: "var(--text-muted)" }} className="block text-[10px] font-bold uppercase tracking-wider mb-1">
                                         Bridge Pitch / Narrative:
                                       </label>
                                       <textarea
@@ -1880,7 +2114,8 @@ export default function ResumeGapAnalyzerPage() {
                                           updateBridge(item.skill, { pitch: e.target.value })
                                         }
                                         placeholder="Explain how your real project proves transferable capability..."
-                                        className="w-full text-xs p-2 rounded-xl bg-white border border-stone-300 text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-600 focus:border-amber-600 resize-none leading-relaxed"
+                                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                                        className="w-full text-xs p-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/40 focus:border-[var(--teal-600)] resize-none leading-relaxed"
                                       />
                                     </div>
 
@@ -1888,7 +2123,8 @@ export default function ResumeGapAnalyzerPage() {
                                       <button
                                         type="button"
                                         onClick={() => resetBridge(item.skill)}
-                                        className="text-[10px] font-semibold text-stone-400 hover:text-stone-700 transition cursor-pointer"
+                                        style={{ color: "var(--text-muted)" }}
+                                        className="text-[10px] font-semibold hover:text-[var(--navy-900)] hover:underline transition cursor-pointer"
                                       >
                                         Reset to Default
                                       </button>
@@ -1897,7 +2133,8 @@ export default function ResumeGapAnalyzerPage() {
                                         onClick={() =>
                                           updateBridge(item.skill, { isEditing: false })
                                         }
-                                        className="px-2.5 py-1 bg-[#78350F] hover:bg-[#632C0D] text-white text-[10px] font-semibold rounded-lg shadow-2xs transition cursor-pointer flex items-center gap-1"
+                                        style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
+                                        className="px-2.5 py-1 text-[10px] font-semibold rounded-lg shadow-2xs transition hover:bg-[var(--teal-700)] cursor-pointer flex items-center gap-1"
                                       >
                                         <Check className="w-3 h-3" />
                                         <span>Save Changes</span>
@@ -1907,12 +2144,15 @@ export default function ResumeGapAnalyzerPage() {
                                 ) : (
                                   <>
                                     {/* Real Resume Project Anchor Badge */}
-                                    <div className="mb-2.5 p-2 rounded-xl bg-[#FAF8F5] border border-stone-200/80">
-                                      <div className="text-[10px] font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1 mb-0.5">
-                                        <FolderGit2 className="w-3 h-3 text-amber-700" />
+                                    <div
+                                      style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                                      className="mb-2.5 p-2 rounded-xl border"
+                                    >
+                                      <div style={{ color: "var(--navy-900)" }} className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 mb-0.5">
+                                        <FolderGit2 className="w-3 h-3 text-[var(--navy-900)]" />
                                         <span>Resume Anchor:</span>
                                       </div>
-                                      <p className="text-xs font-semibold text-stone-900 leading-snug line-clamp-2">
+                                      <p style={{ color: "var(--text-primary)" }} className="text-xs font-semibold leading-snug line-clamp-2">
                                         {bridge.project}
                                       </p>
                                     </div>
@@ -1922,7 +2162,8 @@ export default function ResumeGapAnalyzerPage() {
                                         {item.bridge_keywords.map((kw, kidx) => (
                                           <span
                                             key={kidx}
-                                            className="px-2 py-0.5 rounded-md bg-white border border-stone-200 text-stone-800 text-[10px] font-semibold"
+                                            style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-700)" }}
+                                            className="px-2 py-0.5 rounded-md border text-[10px] font-semibold"
                                           >
                                             🌉 {kw}
                                           </span>
@@ -1930,17 +2171,20 @@ export default function ResumeGapAnalyzerPage() {
                                       </div>
                                     )}
 
-                                    <p className="text-xs sm:text-sm text-stone-700 leading-relaxed font-sans">
+                                    <p style={{ color: "var(--text-primary)" }} className="text-xs sm:text-sm opacity-90 leading-relaxed font-sans">
                                       {bridge.pitch}
                                     </p>
                                   </>
                                 )}
                               </div>
 
-                              <div className="pt-3 mt-3 border-t border-stone-200/60 text-[10px] text-stone-500 font-semibold uppercase tracking-wider flex items-center justify-between">
+                              <div style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} className="pt-3 mt-3 border-t text-[10px] font-semibold uppercase tracking-wider flex items-center justify-between">
                                 <span>Connect Your Project</span>
                                 {bridge.isModified && (
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold uppercase">
+                                  <span
+                                    style={{ backgroundColor: "var(--surface)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                                    className="text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase"
+                                  >
                                     Customized
                                   </span>
                                 )}
@@ -1953,7 +2197,10 @@ export default function ResumeGapAnalyzerPage() {
                   );
                 })
               ) : (
-                <div className="p-8 rounded-3xl border border-stone-200 bg-white text-center text-xs text-stone-500">
+                <div
+                  style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
+                  className="p-8 rounded-[12px] border text-center text-xs"
+                >
                   No critical missing skill gaps detected.
                 </div>
               )}
@@ -1967,13 +2214,17 @@ export default function ResumeGapAnalyzerPage() {
                 insights.weak_improvements.map((item, idx) => (
                   <div
                     key={idx}
-                    className="p-5 rounded-3xl border border-[#E7DED1] bg-white shadow-xs space-y-3"
+                    style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                    className="p-4 sm:p-5 rounded-[12px] border shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] space-y-3 transition-shadow"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="px-2.5 py-1 rounded-lg bg-[#FEF9EE] text-[#92400E] border border-[#FDE68A] font-mono text-xs font-bold">
-                        {item.skill}
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span
+                        style={{ backgroundColor: "var(--weak-bg)", color: "var(--weak)", borderColor: "var(--weak-border)" }}
+                        className="px-2.5 py-1 rounded-lg border font-mono text-xs font-bold"
+                      >
+                        ~ {item.skill}
                       </span>
-                      <span className="text-xs text-stone-400 font-medium">XYZ Impact Model</span>
+                      <span style={{ color: "var(--text-muted)" }} className="text-xs font-medium">XYZ Impact Model</span>
                     </div>
 
                     <div className="space-y-2">
@@ -1983,31 +2234,33 @@ export default function ResumeGapAnalyzerPage() {
                         return (
                           <div
                             key={bidx}
-                            className="p-3.5 rounded-xl bg-[#FAF8F5] border border-stone-200/70 flex items-start justify-between gap-3 group hover:border-amber-200 transition"
+                            style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                            className="p-3 sm:p-3.5 rounded-xl border flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-2.5 sm:gap-3 group hover:border-[var(--navy-900)] transition"
                           >
                             <div className="flex items-start gap-2.5 flex-grow">
-                              <span className="text-amber-800 font-bold mt-0.5">•</span>
-                              <p className="text-xs sm:text-sm text-stone-800 leading-relaxed font-sans">
+                              <span style={{ color: "var(--navy-900)" }} className="font-bold mt-0.5 shrink-0">•</span>
+                              <p style={{ color: "var(--text-primary)" }} className="text-xs sm:text-sm opacity-90 leading-relaxed font-sans">
                                 {bullet}
                               </p>
                             </div>
 
                             <button
                               onClick={() => handleCopyBullet(bulletKey, bullet)}
-                              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer shrink-0 ${
-                                isBulletCopied
-                                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                                  : "bg-white hover:bg-stone-50 border-stone-200 text-stone-600 shadow-2xs"
-                              }`}
+                              style={{
+                                backgroundColor: isBulletCopied ? "var(--navy-50)" : "var(--surface)",
+                                borderColor: isBulletCopied ? "var(--strong)" : "var(--border)",
+                                color: isBulletCopied ? "var(--strong)" : "var(--text-primary)",
+                              }}
+                              className="self-end sm:self-auto flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer shrink-0 hover:bg-[var(--navy-50)] shadow-2xs"
                             >
                               {isBulletCopied ? (
                                 <>
-                                  <Check className="w-3.5 h-3.5 text-emerald-700" />
+                                  <Check className="w-3.5 h-3.5 text-[var(--strong)]" />
                                   <span>Copied</span>
                                 </>
                               ) : (
                                 <>
-                                  <Copy className="w-3.5 h-3.5 text-stone-400" />
+                                  <Copy className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                                   <span>Copy</span>
                                 </>
                               )}
@@ -2019,7 +2272,10 @@ export default function ResumeGapAnalyzerPage() {
                   </div>
                 ))
               ) : (
-                <div className="p-8 rounded-3xl border border-stone-200 bg-white text-center text-xs text-stone-500">
+                <div
+                  style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
+                  className="p-8 rounded-[12px] border text-center text-xs"
+                >
                   No weak bullet improvements needed.
                 </div>
               )}
@@ -2037,51 +2293,61 @@ export default function ResumeGapAnalyzerPage() {
                   return (
                     <div
                       key={idx}
-                      className="rounded-3xl border border-[#E7DED1] bg-white overflow-hidden shadow-xs"
+                      style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                      className="rounded-[12px] border overflow-hidden shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-shadow"
                     >
                       {/* Clicking ANYWHERE in this header row toggles open/close */}
                       <div
                         onClick={() => toggleQuestionExpanded(idx)}
-                        className="p-4 sm:p-5 flex items-start justify-between gap-3 bg-white hover:bg-[#FAF8F5] transition cursor-pointer select-none border-b border-stone-100"
+                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                        className="p-3.5 sm:p-5 flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-3 hover:bg-[var(--navy-50)] transition cursor-pointer select-none border-b"
                       >
-                        <div className="flex items-start gap-3 flex-grow">
-                          <span className="w-6 h-6 rounded-lg bg-[#FAF8F5] text-stone-800 border border-stone-200 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+                        <div className="flex items-start gap-2.5 sm:gap-3 flex-grow min-w-0">
+                          <span
+                            style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                            className="w-6 h-6 rounded-lg border flex items-center justify-center text-xs font-bold shrink-0 mt-0.5"
+                          >
                             {idx + 1}
                           </span>
-                          <div>
-                            <span className="inline-block px-2 py-0.5 rounded-md bg-[#FEF9EE] border border-[#FDE68A] text-[#92400E] text-[10px] font-semibold uppercase tracking-wider mb-1.5">
-                              Probing Gap: {q.targeted_skill}
+                          <div className="min-w-0 flex-1">
+                            <span
+                              style={{ backgroundColor: "var(--missing-bg)", borderColor: "var(--missing-border)", color: "var(--missing)" }}
+                              className="inline-block px-2 py-0.5 rounded-md border text-[10px] font-semibold uppercase tracking-wider mb-1.5"
+                            >
+                              ✕ Probing Gap: {q.targeted_skill}
                             </span>
-                            <h4 className="text-xs sm:text-sm font-semibold text-stone-900 leading-snug">
+                            <h4 style={{ color: "var(--navy-900)" }} className="text-xs sm:text-sm font-semibold leading-snug">
                               {q.question}
                             </h4>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between sm:justify-end gap-1.5 shrink-0 self-end sm:self-auto" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => handleCopyQuestion(idx, q)}
-                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer ${
-                              isCopied
-                                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                                : "bg-white hover:bg-stone-50 border-stone-200 text-stone-600 shadow-2xs"
-                            }`}
+                            style={{
+                              backgroundColor: isCopied ? "var(--navy-50)" : "var(--surface)",
+                              borderColor: isCopied ? "var(--strong)" : "var(--border)",
+                              color: isCopied ? "var(--strong)" : "var(--text-primary)",
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer hover:bg-[var(--navy-50)] shadow-2xs"
                           >
                             {isCopied ? (
                               <>
-                                <Check className="w-3.5 h-3.5 text-emerald-700" />
+                                <Check className="w-3.5 h-3.5 text-[var(--strong)]" />
                                 <span>Copied</span>
                               </>
                             ) : (
                               <>
-                                <Copy className="w-3.5 h-3.5 text-stone-400" />
+                                <Copy className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                                 <span>Copy Q&A</span>
                               </>
                             )}
                           </button>
                           <button
                             onClick={() => toggleQuestionExpanded(idx)}
-                            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition cursor-pointer"
+                            style={{ color: "var(--text-muted)" }}
+                            className="p-1.5 rounded-lg hover:text-[var(--navy-900)] hover:bg-[var(--navy-50)] transition cursor-pointer"
                             title={isExpanded ? "Collapse" : "Expand"}
                           >
                             {isExpanded ? (
@@ -2095,15 +2361,21 @@ export default function ResumeGapAnalyzerPage() {
 
                       {/* Expandable Strategic Talking Points */}
                       {isExpanded && (
-                        <div className="p-4 sm:p-5 bg-[#FAF8F5] flex items-start gap-3 border-t border-stone-100">
-                          <div className="w-6 h-6 rounded-md bg-stone-100 flex items-center justify-center shrink-0 mt-0.5 text-stone-600">
-                            <Lightbulb className="w-3.5 h-3.5 text-amber-800" />
+                        <div
+                          style={{ backgroundColor: "var(--navy-50)", borderColor: "var(--border)" }}
+                          className="p-3.5 sm:p-5 flex items-start gap-2.5 sm:gap-3 border-t"
+                        >
+                          <div
+                            style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-900)" }}
+                            className="w-6 h-6 rounded-md border flex items-center justify-center shrink-0 mt-0.5"
+                          >
+                            <Lightbulb className="w-3.5 h-3.5 text-[var(--navy-900)]" />
                           </div>
                           <div className="flex-grow">
-                            <p className="text-xs font-bold text-stone-800 uppercase tracking-wider mb-1">
+                            <p style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider mb-1">
                               Strategic Talking Points & Response Framework
                             </p>
-                            <p className="text-xs sm:text-sm text-stone-600 leading-relaxed whitespace-pre-line font-sans">
+                            <p style={{ color: "var(--text-primary)" }} className="text-xs sm:text-sm opacity-85 leading-relaxed whitespace-pre-line font-sans">
                               {q.suggested_talking_points}
                             </p>
                           </div>
@@ -2113,7 +2385,10 @@ export default function ResumeGapAnalyzerPage() {
                   );
                 })
               ) : (
-                <div className="p-8 rounded-3xl border border-stone-200 bg-white text-center text-xs text-stone-500">
+                <div
+                  style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
+                  className="p-8 rounded-[12px] border text-center text-xs"
+                >
                   No interview questions generated.
                 </div>
               )}

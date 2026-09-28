@@ -1,13 +1,177 @@
 @import "tailwindcss";
 
+@theme {
+  --color-navy-900: #0F1F3D;
+  --color-navy-700: #1E3A5F;
+  --color-navy-50: #EEF2F8;
+  --color-teal-600: #0F766E;
+  --color-teal-700: #0D5F59;
+  --color-bg: #F4F6FA;
+  --color-surface: #FFFFFF;
+  --color-border: #E2E8F0;
+  --color-text-primary: #0F1F3D;
+  --color-text-muted: #475569;
+  --color-accent: #F59E0B;
+}
+
 :root {
-  --background: #faf7f2;
-  --foreground: #1c1917;
+  --navy-900: #0F1F3D;   /* structure: logo, headings, active nav */
+  --navy-700: #1E3A5F;   /* hover states on navy elements */
+  --navy-50:  #EEF2F8;   /* light navy tint for hover/selected backgrounds */
+  --teal-600: #0F766E;   /* action: primary buttons, status dot */
+  --teal-700: #0D5F59;   /* teal hover */
+  --bg: #F4F6FA;         /* page background, cool off-white */
+  --surface: #FFFFFF;    /* cards */
+  --border: #E2E8F0;
+  --text-primary: #0F1F3D;
+  --text-muted: #475569; /* darker than current, must be readable */
+  --accent: #F59E0B;     /* amber, small highlights only */
+
+  /* Semantic gap analysis tokens (softened) */
+  --missing: #DC2626;
+  --missing-bg: #FEF2F2;
+  --missing-border: #FECACA;
+  --weak: #D97706;
+  --weak-bg: #FFFBEB;
+  --weak-border: #FDE68A;
+  --strong: #16A34A;
+  --strong-bg: #F0FDF4;
+  --strong-border: #BBF7D0;
+
+  /* Target Role Badge Tokens */
+  --role-bg: #FEF3C7;
+  --role-text: #92400E;
+  --role-border: #FDE68A;
+
+  --card-shadow: 0 1px 3px rgba(15, 31, 61, 0.08);
+  --card-shadow-hover: 0 4px 12px rgba(15, 31, 61, 0.12);
 }
 
 body {
-  background-color: var(--background);
-  color: var(--foreground);
+  background-color: var(--bg);
+  color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ========================================================================= */
+/* THEME UTILITIES: NAVY + TEAL DESIGN SYSTEM                                */
+/* ========================================================================= */
+
+.bg-delta-bg {
+  background-color: var(--bg) !important;
+}
+
+.bg-delta-card {
+  background-color: var(--surface) !important;
+}
+
+.border-delta-border {
+  border-color: var(--border) !important;
+}
+
+.text-delta-primary {
+  color: var(--text-primary) !important;
+}
+
+.text-delta-muted {
+  color: var(--text-muted) !important;
+}
+
+/* Navy Structure Utilities */
+.bg-navy-900 { background-color: var(--navy-900) !important; }
+.bg-navy-700 { background-color: var(--navy-700) !important; }
+.bg-navy-50  { background-color: var(--navy-50) !important; }
+.text-navy-900 { color: var(--navy-900) !important; }
+.text-navy-700 { color: var(--navy-700) !important; }
+.border-navy-900 { border-color: var(--navy-900) !important; }
+.border-navy-700 { border-color: var(--navy-700) !important; }
+
+/* Teal Action Utilities */
+.bg-teal-600 { background-color: var(--teal-600) !important; }
+.bg-teal-700 { background-color: var(--teal-700) !important; }
+.text-teal-600 { color: var(--teal-600) !important; }
+.text-teal-700 { color: var(--teal-700) !important; }
+.border-teal-600 { border-color: var(--teal-600) !important; }
+
+/* Amber Accent Utilities */
+.bg-delta-accent { background-color: var(--accent) !important; }
+.text-delta-accent { color: var(--accent) !important; }
+.border-delta-accent { border-color: var(--accent) !important; }
+
+/* Card Styling: 12px radius, 1px border, 0 1px 3px rgba(15,31,61,0.08) */
+.delta-card {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 31, 61, 0.08);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.delta-card:hover {
+  box-shadow: 0 4px 12px rgba(15, 31, 61, 0.12);
+}
+
+/* Primary Teal Button (Actions only) */
+.btn-primary-teal {
+  background-color: var(--teal-600) !important;
+  color: var(--surface) !important;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+.btn-primary-teal:hover:not(:disabled) {
+  background-color: var(--teal-700) !important;
+}
+.btn-primary-teal:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+/* Outlined Teal Button */
+.btn-outline-teal {
+  background-color: transparent !important;
+  color: var(--teal-600) !important;
+  border: 1px solid var(--teal-600) !important;
+  transition: all 0.15s ease;
+}
+.btn-outline-teal:hover:not(:disabled) {
+  background-color: rgba(15, 118, 110, 0.08) !important;
+}
+.btn-outline-teal:disabled {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+}
+
+/* Focus ring for inputs / textareas: 2px teal ring with soft glow */
+.delta-focus-ring:focus {
+  outline: none !important;
+  border-color: var(--teal-600) !important;
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.25) !important;
+}
+
+/* Semantic Gap Classification Badges (Softened) */
+.badge-missing {
+  background-color: var(--missing-bg) !important;
+  color: var(--missing) !important;
+  border-color: var(--missing-border) !important;
+}
+
+.badge-weak {
+  background-color: var(--weak-bg) !important;
+  color: var(--weak) !important;
+  border-color: var(--weak-border) !important;
+}
+
+.badge-strong {
+  background-color: var(--strong-bg) !important;
+  color: var(--strong) !important;
+  border-color: var(--strong-border) !important;
+}
+
+/* Hide scrollbar utility for mobile navigation strips */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
