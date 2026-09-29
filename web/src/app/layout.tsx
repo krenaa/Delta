@@ -23,17 +23,32 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
+import { ClerkProvider } from "@clerk/nextjs";
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased overflow-x-clip`}
+    <ClerkProvider
+      appearance={{
+        variables: {
+          colorPrimary: "#0D9488",
+          borderRadius: "0.75rem",
+        },
+        elements: {
+          card: "shadow-2xl border border-slate-200/80 rounded-2xl",
+          formButtonPrimary: "bg-teal-600 hover:bg-teal-700 text-white font-semibold transition-all",
+        },
+      }}
     >
-      <body className="min-h-full flex flex-col overflow-x-clip w-full max-w-full">{children}</body>
-    </html>
+      <html
+        lang="en"
+        className={`${geistSans.variable} ${geistMono.variable} h-full antialiased overflow-x-clip`}
+      >
+        <body className="min-h-full flex flex-col overflow-x-clip w-full max-w-full">{children}</body>
+      </html>
+    </ClerkProvider>
   );
 }

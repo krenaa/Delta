@@ -47,6 +47,8 @@ import {
   XCircle,
   Zap,
 } from "lucide-react";
+import Link from "next/link";
+import { useUser, SignInButton, UserButton } from "@clerk/nextjs";
 import dynamic from "next/dynamic";
 const ResumePdfViewer = dynamic(() => import("./ResumePdfViewer"), {
   ssr: false,
@@ -128,6 +130,7 @@ Key Experience:
 type ActiveSection = "sources" | "review" | "roadmap" | "bullets" | "interview";
 
 export default function ResumeGapAnalyzerPage() {
+  const { isSignedIn, isLoaded } = useUser();
   const [activeSection, setActiveSection] = useState<ActiveSection>("sources");
   const [jobDescription, setJobDescription] = useState(DEFAULT_JD);
   const [resumeText, setResumeText] = useState(DEFAULT_RESUME);
@@ -1070,6 +1073,33 @@ export default function ResumeGapAnalyzerPage() {
                 <RefreshCw className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                 <span>New Audit</span>
               </button>
+            )}
+
+            {/* Clerk Authentication */}
+            {isLoaded && (
+              <>
+                {!isSignedIn ? (
+                  <SignInButton mode="modal">
+                    <button
+                      type="button"
+                      style={{ backgroundColor: "var(--navy-900)", color: "var(--surface)" }}
+                      className="flex items-center gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold shadow-xs hover:opacity-90 transition cursor-pointer shrink-0"
+                    >
+                      <span>Sign In</span>
+                    </button>
+                  </SignInButton>
+                ) : (
+                  <div className="flex items-center pl-1 shrink-0">
+                    <UserButton
+                      appearance={{
+                        elements: {
+                          avatarBox: "w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-slate-200",
+                        },
+                      }}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
