@@ -1027,51 +1027,53 @@ export default function ResumeGapAnalyzerPage() {
         style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
         className="sticky top-0 z-30 border-b shadow-xs w-full max-w-full"
       >
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 w-full min-w-0">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 sm:py-3 flex flex-row items-center justify-between gap-2 sm:gap-4 w-full min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* Bold Navy Logo Box with White Icon */}
             <div
               style={{ backgroundColor: "var(--navy-900)", color: "var(--surface)" }}
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shadow-xs font-black text-base sm:text-lg select-none shrink-0"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shadow-xs font-black text-sm sm:text-lg select-none shrink-0"
             >
               Δ
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 style={{ color: "var(--navy-900)" }} className="text-base sm:text-lg font-bold tracking-tight">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <h1 style={{ color: "var(--navy-900)" }} className="text-sm sm:text-lg font-bold tracking-tight">
                   Delta
                 </h1>
                 <span
                   style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)", borderColor: "var(--border)" }}
-                  className="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold tracking-wide border shrink-0"
+                  className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold tracking-wide border shrink-0"
                 >
                   LangGraph Agentic Audit
                 </span>
               </div>
-              <p style={{ color: "var(--text-muted)" }} className="text-[10px] sm:text-[11px] font-medium truncate sm:line-clamp-1">
+              <p style={{ color: "var(--text-muted)" }} className="hidden md:block text-[10px] sm:text-[11px] font-medium truncate sm:line-clamp-1">
                 Targeted skill diagnosis, 48-hr bridge roadmap & interview defense
               </p>
             </div>
           </div>
 
-          {/* Top Actions: Light styling pills with subtle border */}
-          <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
+          {/* Top Actions: Light styling pills with subtle border in one single line */}
+          <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0">
             <div
               style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
-              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full border text-[11px] sm:text-xs font-medium"
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-full border text-[10px] sm:text-xs font-medium"
             >
-              <span style={{ backgroundColor: "var(--strong)" }} className="w-2 h-2 rounded-full shadow-[0_0_8px_rgba(22,163,74,0.7)]" />
-              <span>AI Engine Ready</span>
+              <span style={{ backgroundColor: "var(--strong)" }} className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full shadow-[0_0_8px_rgba(22,163,74,0.7)]" />
+              <span className="hidden sm:inline">AI Engine Ready</span>
+              <span className="sm:hidden">Ready</span>
             </div>
 
             {(finalOutput || hitlReview) && (
               <button
                 onClick={handleReset}
                 style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
-                className="flex items-center gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1.5 border hover:bg-[var(--navy-50)] rounded-xl text-[11px] sm:text-xs font-semibold shadow-xs transition cursor-pointer"
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3.5 sm:py-1.5 border hover:bg-[var(--navy-50)] rounded-xl text-[10px] sm:text-xs font-semibold shadow-xs transition cursor-pointer"
               >
-                <RefreshCw className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-                <span>New Audit</span>
+                <RefreshCw className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[var(--text-muted)]" />
+                <span className="hidden xs:inline">New Audit</span>
+                <span className="xs:hidden">Reset</span>
               </button>
             )}
 
@@ -1083,13 +1085,13 @@ export default function ResumeGapAnalyzerPage() {
                     <button
                       type="button"
                       style={{ backgroundColor: "var(--navy-900)", color: "var(--surface)" }}
-                      className="flex items-center gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold shadow-xs hover:opacity-90 transition cursor-pointer shrink-0"
+                      className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold shadow-xs hover:opacity-90 transition cursor-pointer shrink-0"
                     >
                       <span>Sign In</span>
                     </button>
                   </SignInButton>
                 ) : (
-                  <div className="flex items-center pl-1 shrink-0">
+                  <div className="flex items-center pl-0.5 sm:pl-1 shrink-0">
                     <UserButton
                       appearance={{
                         elements: {
