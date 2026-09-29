@@ -267,8 +267,8 @@ def generate_insights_node(state: AgentState) -> dict:
             "You are an executive technical career coach and hiring lead. Analyze the candidate's skill gaps against the target JD.\n"
             "Provide a comprehensive, high-value structured evaluation:\n"
             "1. 'match_score': An integer readiness score (0-100) reflecting candidate suitability.\n"
-            "2. 'company_name': The target company name.\n"
-            "3. 'company_context': Brief context on the company's core mission and architecture.\n"
+            "2. 'company_name': The target company name ONLY if explicitly named in the Target Company section or Job Description. If no company is explicitly named, return null. NEVER fabricate or hallucinate a company name.\n"
+            "3. 'company_context': Brief context on the company's core mission and architecture (or null if unknown).\n"
             "4. 'executive_summary': A 2-3 sentence executive synthesis connecting the dots: highlight existing core strengths, identify the main architectural gaps, and define the primary interview ramp-up strategy.\n"
             "5. 'missing_roadmap': For each missing skill, provide:\n"
             "   - 'company_keywords': 1-3 punchy keywords on why the company requires this (e.g. ['Zero-Downtime', 'Pod Autoscaling']).\n"
@@ -300,8 +300,13 @@ def generate_insights_node(state: AgentState) -> dict:
         insights = llm_result
         if not insights.match_score:
             insights.match_score = calculated_score
-        if company_name and not insights.company_name:
+        if company_name:
             insights.company_name = company_name
+        elif insights.company_name:
+            # Validate that the company name actually appears in the job description
+            clean_company = insights.company_name.strip()
+            if clean_company.lower() not in jd_text.lower():
+                insights.company_name = None
         if company_context and not insights.company_context:
             insights.company_context = company_context
         if not insights.missing_roadmap and final_output.missing:

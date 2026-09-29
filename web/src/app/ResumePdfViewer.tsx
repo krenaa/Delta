@@ -35,7 +35,7 @@ export default function ResumePdfViewer({ pdfUrl }: ResumePdfViewerProps) {
       container.innerHTML = "";
 
       // Get exact width of container
-      const containerWidth = container.clientWidth || 450;
+      const containerWidth = container.clientWidth || 320;
       const pixelRatio = typeof window !== "undefined" ? window.devicePixelRatio || 2 : 2;
 
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -47,8 +47,9 @@ export default function ResumePdfViewer({ pdfUrl }: ResumePdfViewerProps) {
         const viewport = page.getViewport({ scale });
 
         const canvas = document.createElement("canvas");
-        canvas.className = "w-full bg-white block border-b border-[var(--border)] last:border-b-0";
+        canvas.className = "w-full max-w-full bg-white block border-b border-[var(--border)] last:border-b-0";
         canvas.style.width = "100%";
+        canvas.style.maxWidth = "100%";
         canvas.style.height = "auto";
         canvas.style.display = "block";
         canvas.width = Math.floor(viewport.width);
@@ -99,11 +100,11 @@ export default function ResumePdfViewer({ pdfUrl }: ResumePdfViewerProps) {
   return (
     <div
       style={{ backgroundColor: "var(--surface)" }}
-      className="flex-1 w-full flex flex-col relative overflow-hidden"
+      className="flex-1 min-h-0 w-full h-full flex flex-col relative overflow-hidden"
     >
       {loading && (
         <div className="absolute inset-0 bg-white/90 z-20 flex flex-col items-center justify-center gap-2">
-          <RefreshCw className="w-5 h-5 text-[var(--teal-600)] animate-spin" />
+          <RefreshCw className="w-5 h-5 text-[var(--navy-700)] animate-spin" />
           <span style={{ color: "var(--navy-900)" }} className="text-xs font-semibold">
             Rendering full-width resume...
           </span>
@@ -111,7 +112,7 @@ export default function ResumePdfViewer({ pdfUrl }: ResumePdfViewerProps) {
       )}
 
       {error ? (
-        <div className="flex-1 p-6 flex flex-col items-center justify-center text-center">
+        <div className="flex-1 min-h-0 p-6 flex flex-col items-center justify-center text-center">
           <FileText className="w-8 h-8 text-[var(--text-muted)] mb-2" />
           <p style={{ color: "var(--navy-900)" }} className="text-xs font-medium mb-3">
             {error}
@@ -129,7 +130,7 @@ export default function ResumePdfViewer({ pdfUrl }: ResumePdfViewerProps) {
       ) : (
         <div
           ref={containerRef}
-          className="flex-1 w-full overflow-y-auto overflow-x-hidden p-0 bg-white min-h-[360px] sm:min-h-[460px] lg:min-h-[580px] max-h-[720px]"
+          className="flex-1 min-h-0 w-full h-full overflow-y-auto overflow-x-hidden p-0 bg-white delta-scrollbar"
           style={{ width: "100%" }}
         />
       )}
