@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Clock,
   Coffee,
   Copy,
   Download,
@@ -27,6 +28,7 @@ import {
   FolderGit2,
   Globe,
   HelpCircle,
+  History,
   Lightbulb,
   Link2,
   MessageSquare,
@@ -127,13 +129,124 @@ Key Experience:
 - Explored LangGraph prototypes for ambient AI assistants and agent graphs.
 - Implemented CI/CD pipelines, Git workflows, and automated testing with pytest.`;
 
+interface AuditHistoryItem {
+  id: string;
+  timestamp: string;
+  roleTitle: string;
+  companyName?: string;
+  matchScore?: number;
+  jobDescription: string;
+  resumeText: string;
+  hitlReview: GapAnalysisResult | null;
+  finalOutput: GapAnalysisResult | null;
+  insights: Tier1Insights | null;
+}
+
 type ActiveSection = "sources" | "review" | "roadmap" | "bullets" | "interview";
 
 export default function ResumeGapAnalyzerPage() {
   const { isSignedIn, isLoaded } = useUser();
   const [activeSection, setActiveSection] = useState<ActiveSection>("sources");
-  const [jobDescription, setJobDescription] = useState(DEFAULT_JD);
-  const [resumeText, setResumeText] = useState(DEFAULT_RESUME);
+
+  // Clean slate default inputs (empty strings)
+  const [jobDescription, setJobDescription] = useState("");
+  const [resumeText, setResumeText] = useState("");
+
+  // Audit History state & drawer toggle
+  const [history, setHistory] = useState<AuditHistoryItem[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  // Load saved audit history from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("delta_audit_history");
+      if (saved) {
+        setHistory(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error("Failed to load audit history from localStorage:", e);
+    }
+  }, []);
+
+  const handleLoadDemo = () => {
+    setJobDescription(DEFAULT_JD);
+    setResumeText(DEFAULT_RESUME);
+    setError(null);
+  };
+
+  const handleClearInputs = () => {
+    setJobDescription("");
+    setResumeText("");
+    setPdfUrl(null);
+    setUploadedFileName(null);
+    setHitlReview(null);
+    setFinalOutput(null);
+    setInsights(null);
+    setActiveSection("sources");
+  };
+
+  const saveAuditToHistory = (
+    jd: string,
+    res: string,
+    hitl: GapAnalysisResult | null,
+    finalOut: GapAnalysisResult | null,
+    ins: Tier1Insights | null
+  ) => {
+    try {
+      if (!jd.trim() || !res.trim()) return;
+      const title = ins?.company_name
+        ? `${ins.company_name} Audit`
+        : jd.split("\n")[0].slice(0, 32) || "Audit Report";
+
+      const newItem: AuditHistoryItem = {
+        id: Date.now().toString(),
+        timestamp: new Date().toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        roleTitle: title,
+        companyName: ins?.company_name,
+        matchScore: ins?.match_score,
+        jobDescription: jd,
+        resumeText: res,
+        hitlReview: hitl,
+        finalOutput: finalOut,
+        insights: ins,
+      };
+
+      setHistory((prev) => {
+        const filtered = prev.filter(
+          (item) => item.jobDescription !== jd || item.resumeText !== res
+        );
+        const updated = [newItem, ...filtered].slice(0, 10);
+        localStorage.setItem("delta_audit_history", JSON.stringify(updated));
+        return updated;
+      });
+    } catch (e) {
+      console.error("Failed to save audit history:", e);
+    }
+  };
+
+  const handleLoadHistoryItem = (item: AuditHistoryItem) => {
+    setJobDescription(item.jobDescription);
+    setResumeText(item.resumeText);
+    setHitlReview(item.hitlReview);
+    setFinalOutput(item.finalOutput);
+    setInsights(item.insights);
+    setActiveSection(item.finalOutput ? "roadmap" : item.hitlReview ? "review" : "sources");
+    setIsHistoryOpen(false);
+  };
+
+  const handleDeleteHistoryItem = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setHistory((prev) => {
+      const updated = prev.filter((item) => item.id !== id);
+      localStorage.setItem("delta_audit_history", JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   // PDF Preview State
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -640,6 +753,7 @@ export default function ResumeGapAnalyzerPage() {
       if (data.proposed_gap) {
         setHitlReview(data.proposed_gap);
         handleNavClick("review");
+        saveAuditToHistory(jobDescription, resumeText, data.proposed_gap, null, null);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -707,6 +821,13 @@ export default function ResumeGapAnalyzerPage() {
       if (data.insights) {
         setInsights(data.insights);
       }
+      saveAuditToHistory(
+        jobDescription,
+        resumeText,
+        hitlReview,
+        data.final_output,
+        data.insights || null
+      );
 
       // Record confirmed review snapshot
       if (hitlReview) {
@@ -1064,6 +1185,22 @@ export default function ResumeGapAnalyzerPage() {
               <span className="hidden sm:inline">AI Engine Ready</span>
               <span className="sm:hidden">Ready</span>
             </div>
+
+            {/* Audit History Drawer Button */}
+            <button
+              onClick={() => setIsHistoryOpen(true)}
+              style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-900)" }}
+              className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 border hover:bg-[var(--navy-50)] rounded-xl text-[10px] sm:text-xs font-semibold shadow-xs transition cursor-pointer shrink-0"
+              title="View past saved audits"
+            >
+              <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[var(--teal-600)] shrink-0" />
+              <span className="hidden xs:inline">History</span>
+              {history.length > 0 && (
+                <span className="bg-[var(--teal-600)] text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full min-w-[16px] text-center shrink-0">
+                  {history.length}
+                </span>
+              )}
+            </button>
 
             {(finalOutput || hitlReview) && (
               <button
@@ -1504,12 +1641,29 @@ export default function ResumeGapAnalyzerPage() {
                   </p>
                 </div>
               </div>
-              <span
-                style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)", borderColor: "var(--border)" }}
-                className="text-[10px] sm:text-xs font-semibold px-2.5 py-1 rounded-full border hidden sm:inline-block"
-              >
-                Inputs
-              </span>
+              <div className="flex items-center gap-2">
+                {!jobDescription && !resumeText ? (
+                  <button
+                    type="button"
+                    onClick={handleLoadDemo}
+                    style={{ backgroundColor: "var(--navy-900)", color: "var(--surface)" }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] sm:text-xs font-semibold shadow-xs hover:opacity-90 transition cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-teal-300 animate-pulse" />
+                    <span>Load Sample Demo</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleClearInputs}
+                    style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-medium border hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] transition cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Clear Slate</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-col gap-4 sm:gap-6 w-full min-w-0 max-w-full">
@@ -3096,6 +3250,105 @@ export default function ResumeGapAnalyzerPage() {
           )}
         </main>
       </div>
+
+      {/* Audit History Slide-Over Drawer */}
+      {isHistoryOpen && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in"
+          onClick={() => setIsHistoryOpen(false)}
+        >
+          <div
+            className="w-full max-w-md h-full bg-[var(--surface)] border-l border-[var(--border)] shadow-2xl flex flex-col min-h-0 animate-in slide-in-from-right duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Drawer Header */}
+            <div className="p-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--navy-900)] text-white">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-teal-400" />
+                <h3 className="font-bold text-sm">Audit History</h3>
+                <span className="text-[10px] bg-teal-500/20 text-teal-300 border border-teal-500/30 px-2 py-0.5 rounded-full font-mono">
+                  {history.length} Saved
+                </span>
+              </div>
+              <button
+                onClick={() => setIsHistoryOpen(false)}
+                className="p-1 rounded-lg hover:bg-white/10 text-slate-300 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* History List */}
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 delta-scrollbar">
+              {history.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 text-center p-6 text-[var(--text-muted)]">
+                  <Clock className="w-10 h-10 mb-3 text-slate-300 stroke-[1.5]" />
+                  <p className="text-sm font-semibold text-[var(--navy-900)]">No Saved Audits Yet</p>
+                  <p className="text-xs mt-1">Run an audit or click "Load Sample Demo" to populate and automatically save reports in your history.</p>
+                </div>
+              ) : (
+                history.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => handleLoadHistoryItem(item)}
+                    className="p-3.5 rounded-xl border border-[var(--border)] hover:border-[var(--teal-600)] hover:shadow-md transition cursor-pointer bg-[var(--surface)] flex flex-col gap-2 group"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-[var(--navy-900)] truncate group-hover:text-[var(--teal-600)] transition">
+                          {item.roleTitle}
+                        </h4>
+                        <span className="text-[10px] text-[var(--text-muted)]">
+                          {item.timestamp}
+                        </span>
+                      </div>
+                      {item.matchScore !== undefined && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200 shrink-0">
+                          {item.matchScore}% Match
+                        </span>
+                      )}
+                      <button
+                        onClick={(e) => handleDeleteHistoryItem(item.id, e)}
+                        className="p-1 text-[var(--text-muted)] hover:text-red-600 rounded hover:bg-red-50 opacity-0 group-hover:opacity-100 transition"
+                        title="Delete audit"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-[var(--text-muted)] line-clamp-2 bg-[var(--navy-50)]/50 p-2 rounded-lg font-mono">
+                      {item.jobDescription.slice(0, 110)}...
+                    </p>
+
+                    <div className="flex items-center justify-between text-[10px] pt-1 border-t border-[var(--border)] text-[var(--teal-600)] font-semibold">
+                      <span>{item.finalOutput ? "Final Report Ready" : "Verification Step"}</span>
+                      <span className="group-hover:translate-x-1 transition-transform inline-flex items-center gap-0.5">
+                        Restore Audit →
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Drawer Footer */}
+            {history.length > 0 && (
+              <div className="p-3 border-t border-[var(--border)] bg-[var(--navy-50)] flex items-center justify-between">
+                <span className="text-[11px] text-[var(--text-muted)]">Stored locally in browser</span>
+                <button
+                  onClick={() => {
+                    setHistory([]);
+                    localStorage.removeItem("delta_audit_history");
+                  }}
+                  className="text-[11px] text-red-600 hover:underline font-medium"
+                >
+                  Clear All History
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
