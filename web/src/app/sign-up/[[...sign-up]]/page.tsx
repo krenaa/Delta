@@ -57,7 +57,7 @@ export default function SignUpPage() {
 
       <div className="mt-8 text-center text-[11px] text-slate-500 z-10 flex items-center gap-1.5">
         <Sparkles className="w-3.5 h-3.5 text-teal-400" />
-        Secured by Clerk & Google OAuth • Delta AI Engine
+        Secured by Clerk & Google OAuth • Delta Platform
       </div>
     </div>
   );

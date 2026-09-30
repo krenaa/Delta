@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Delta | AI Resume Gap Analysis & Career Roadmap",
-  description: "Targeted skill diagnosis, 48-hr bridge roadmap, and interview defense powered by LangGraph",
+  title: "Delta | Resume Gap Analysis & Career Roadmap",
+  description: "Targeted skill diagnosis, 48-hr bridge roadmap, and interview defense",
 };
 
 export const viewport: Viewport = {
