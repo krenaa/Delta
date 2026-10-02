@@ -1,5 +1,5 @@
 from typing import Dict, List, Tuple
-from src.state import InterviewQuestion, MissingSkillRoadmap, WeakImprovement
+from src.core.state import InterviewQuestion, MissingSkillRoadmap, WeakImprovement
 
 # Domain-specific knowledge base containing hiring manager rationale, 48-hr bridge projects, interview Q&A, and resume bullets
 TECH_KNOWLEDGE_BASE: Dict[str, Dict[str, any]] = {

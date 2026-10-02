@@ -7,10 +7,9 @@ load_dotenv(override=True)
 
 # Preferred candidate models in priority order
 GROQ_MODELS = [
-    "openai/gpt-oss-120b",
     "llama-3.3-70b-versatile",
-    "qwen/qwen3.8-27b",
     "llama-3.1-8b-instant",
+    "mixtral-8x7b-32768",
 ]
 
 GEMINI_MODELS = [

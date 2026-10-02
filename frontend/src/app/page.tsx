@@ -27,6 +27,7 @@ import {
   Flame,
   FolderGit2,
   Globe,
+  GripVertical,
   HelpCircle,
   History,
   Lightbulb,
@@ -50,9 +51,10 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useUser, SignInButton, UserButton } from "@clerk/nextjs";
 import dynamic from "next/dynamic";
-const ResumePdfViewer = dynamic(() => import("./ResumePdfViewer"), {
+const ResumePdfViewer = dynamic(() => import("@/components/ResumePdfViewer"), {
   ssr: false,
   loading: () => (
     <div className="flex-1 w-full min-h-[580px] flex items-center justify-center bg-white text-xs text-[var(--text-muted)]">
@@ -119,7 +121,23 @@ Role & Responsibilities:
 - Design relational schemas in PostgreSQL and configure Redis caching layers.
 - Implement structured outputs, RAG pipelines, and LLM evaluation benchmarks.`;
 
-const DEFAULT_RESUME = `Candidate: Krena Patel
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
+  const url = endpoint.startsWith("http")
+    ? endpoint
+    : `${API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => null);
+    const detail = errorData?.detail || errorData?.message || res.statusText;
+    throw new Error(`Server returned ${res.status}: ${detail}`);
+  }
+  return res;
+};
+
+const DEFAULT_RESUME = `Candidate: Alex Morgan
 Senior Full-Stack & AI Engineer (4 Years Experience)
 Summary:
 Built multi-agent systems and high-throughput backend APIs for enterprise clients.
@@ -137,6 +155,8 @@ interface AuditHistoryItem {
   matchScore?: number;
   jobDescription: string;
   resumeText: string;
+  uploadedFileName?: string;
+  pdfDataUrl?: string;
   hitlReview: GapAnalysisResult | null;
   finalOutput: GapAnalysisResult | null;
   insights: Tier1Insights | null;
@@ -145,7 +165,8 @@ interface AuditHistoryItem {
 type ActiveSection = "sources" | "review" | "roadmap" | "bullets" | "interview";
 
 export default function ResumeGapAnalyzerPage() {
-  const { isSignedIn, isLoaded } = useUser();
+  const { user, isSignedIn, isLoaded } = useUser();
+  const router = useRouter();
   const [activeSection, setActiveSection] = useState<ActiveSection>("sources");
 
   // Clean slate default inputs (empty strings)
@@ -155,18 +176,56 @@ export default function ResumeGapAnalyzerPage() {
   // Audit History state & drawer toggle
   const [history, setHistory] = useState<AuditHistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // Load saved audit history from localStorage on mount
+  // Scroll listener for floating Back-To-Top button
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("delta_audit_history");
-      if (saved) {
-        setHistory(JSON.parse(saved));
+    const handleScroll = () => {
+      const scrollY = window.scrollY || document.documentElement.scrollTop;
+      if (scrollY > 150) {
+        setShowScrollTop(true);
+      } else {
+        setShowScrollTop(false);
       }
-    } catch (e) {
-      console.error("Failed to load audit history from localStorage:", e);
-    }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  const getHistoryKey = (userId?: string | null) => {
+    return userId ? `delta_audit_history_${userId}` : "delta_audit_history_guest";
+  };
+
+  // Synchronize user-scoped audit history on mount and auth state changes
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (isSignedIn && user?.id) {
+      try {
+        const userKey = `delta_audit_history_${user.id}`;
+        let saved = localStorage.getItem(userKey);
+        // Fallback: migrate legacy un-scoped history if user history is empty
+        if (!saved) {
+          const legacy = localStorage.getItem("delta_audit_history");
+          if (legacy) {
+            saved = legacy;
+            localStorage.setItem(userKey, legacy);
+          }
+        }
+        if (saved) {
+          setHistory(JSON.parse(saved));
+        } else {
+          setHistory([]);
+        }
+      } catch (e) {
+        console.error("Failed to load user audit history:", e);
+      }
+    } else {
+      // User signed out: clear active screen inputs and in-memory history, but keep localStorage safe
+      handleClearInputs();
+      setHistory([]);
+    }
+  }, [isSignedIn, isLoaded, user?.id]);
 
   const handleLoadDemo = () => {
     setJobDescription(DEFAULT_JD);
@@ -182,6 +241,15 @@ export default function ResumeGapAnalyzerPage() {
     setHitlReview(null);
     setFinalOutput(null);
     setInsights(null);
+    setJobUrl("");
+    setCompanyName(null);
+    setCompanyContext(null);
+    setSourcePlatform(null);
+    setUrlFetchSuccessMsg(null);
+    setUserAdjustment("");
+    setCustomBridges({});
+    setSkillSearchQuery("");
+    setSkillCategoryTab("missing");
     setActiveSection("sources");
   };
 
@@ -211,6 +279,8 @@ export default function ResumeGapAnalyzerPage() {
         matchScore: ins?.match_score,
         jobDescription: jd,
         resumeText: res,
+        uploadedFileName: uploadedFileName || undefined,
+        pdfDataUrl: pdfUrl || undefined,
         hitlReview: hitl,
         finalOutput: finalOut,
         insights: ins,
@@ -221,7 +291,12 @@ export default function ResumeGapAnalyzerPage() {
           (item) => item.jobDescription !== jd || item.resumeText !== res
         );
         const updated = [newItem, ...filtered].slice(0, 10);
-        localStorage.setItem("delta_audit_history", JSON.stringify(updated));
+        const key = getHistoryKey(user?.id);
+        try {
+          localStorage.setItem(key, JSON.stringify(updated));
+        } catch (e) {
+          console.error("Failed to save audit history:", e);
+        }
         return updated;
       });
     } catch (e) {
@@ -232,10 +307,24 @@ export default function ResumeGapAnalyzerPage() {
   const handleLoadHistoryItem = (item: AuditHistoryItem) => {
     setJobDescription(item.jobDescription);
     setResumeText(item.resumeText);
+    setUploadedFileName(item.uploadedFileName || null);
+    if (item.pdfDataUrl) {
+      setPdfUrl(item.pdfDataUrl);
+      setPdfViewMode("preview");
+    } else {
+      setPdfUrl(null);
+      setPdfViewMode("text");
+    }
     setHitlReview(item.hitlReview);
     setFinalOutput(item.finalOutput);
     setInsights(item.insights);
-    setActiveSection(item.finalOutput ? "roadmap" : item.hitlReview ? "review" : "sources");
+    
+    const targetSection: ActiveSection = item.finalOutput
+      ? "roadmap"
+      : item.hitlReview
+      ? "review"
+      : "sources";
+    handleNavClick(targetSection);
     setIsHistoryOpen(false);
   };
 
@@ -243,7 +332,12 @@ export default function ResumeGapAnalyzerPage() {
     e.stopPropagation();
     setHistory((prev) => {
       const updated = prev.filter((item) => item.id !== id);
-      localStorage.setItem("delta_audit_history", JSON.stringify(updated));
+      const key = getHistoryKey(user?.id);
+      try {
+        localStorage.setItem(key, JSON.stringify(updated));
+      } catch (e) {
+        console.error("Failed to update history on delete:", e);
+      }
       return updated;
     });
   };
@@ -523,6 +617,33 @@ export default function ResumeGapAnalyzerPage() {
   const [skillCategoryTab, setSkillCategoryTab] = useState<"missing" | "weak" | "strong">("missing");
   const [skillSearchQuery, setSkillSearchQuery] = useState("");
 
+  // Drag and Drop state for skill reclassification
+  const [draggedSkill, setDraggedSkill] = useState<{ skill: string; from: "missing" | "weak" | "strong" } | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<"missing" | "weak" | "strong" | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, skill: string, from: "missing" | "weak" | "strong") => {
+    setDraggedSkill({ skill, from });
+    e.dataTransfer.setData("text/plain", skill);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOverCol = (e: React.DragEvent, col: "missing" | "weak" | "strong") => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverCol !== col) {
+      setDragOverCol(col);
+    }
+  };
+
+  const handleDropOnCol = (e: React.DragEvent, toCol: "missing" | "weak" | "strong") => {
+    e.preventDefault();
+    setDragOverCol(null);
+    if (draggedSkill && draggedSkill.from !== toCol) {
+      handleMoveSkill(draggedSkill.skill, draggedSkill.from, toCol);
+      setDraggedSkill(null);
+    }
+  };
+
   // 48-Hour Roadmap mobile sub-tab and accordion expansion state
   const [roadmapMobileTabs, setRoadmapMobileTabs] = useState<Record<number, "poc" | "why" | "bridge">>({});
   const [expandedRoadmapItems, setExpandedRoadmapItems] = useState<Record<number, boolean>>({});
@@ -551,25 +672,11 @@ export default function ResumeGapAnalyzerPage() {
     setUrlFetchSuccessMsg(null);
 
     try {
-      let response: Response;
-      try {
-        response = await fetch("/api/fetch-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: targetUrl }),
-        });
-      } catch {
-        response = await fetch("http://localhost:8000/api/fetch-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: targetUrl }),
-        });
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: "Failed to fetch URL" }));
-        throw new Error(errorData.detail || `Server returned ${response.status}`);
-      }
+      const response = await apiFetch("/api/fetch-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: targetUrl }),
+      });
 
       const data = await response.json();
       if (data.job_description_clean) {
@@ -624,39 +731,42 @@ export default function ResumeGapAnalyzerPage() {
     setActiveSection("sources");
   };
 
+  const checkAuthForPdfUpload = (): boolean => {
+    if (!isSignedIn) {
+      setError("Please sign in first to upload your PDF resume and analyze skill gaps.");
+      router.push("/sign-in");
+      return false;
+    }
+    return true;
+  };
+
   const handleFileUpload = async (file: File) => {
     if (!file) return;
+    if (!checkAuthForPdfUpload()) return;
     setUploadingFile(true);
     setError(null);
 
-    // If PDF, store local preview blob URL immediately
+    // If PDF, convert to Base64 Data URL so preview & original filename persist in history
     if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-      const blobUrl = URL.createObjectURL(file);
-      setPdfUrl(blobUrl);
-      setPdfViewMode("preview");
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string;
+        if (dataUrl) {
+          setPdfUrl(dataUrl);
+          setPdfViewMode("preview");
+        }
+      };
+      reader.readAsDataURL(file);
     }
 
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      let response: Response;
-      try {
-        response = await fetch("/api/upload-resume", {
-          method: "POST",
-          body: formData,
-        });
-      } catch {
-        response = await fetch("http://localhost:8000/api/upload-resume", {
-          method: "POST",
-          body: formData,
-        });
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: "Upload failed" }));
-        throw new Error(errorData.detail || `Upload failed with status ${response.status}`);
-      }
+      const response = await apiFetch("/api/upload-resume", {
+        method: "POST",
+        body: formData,
+      });
 
       const data = await response.json();
       setResumeText(data.extracted_text);
@@ -670,6 +780,7 @@ export default function ResumeGapAnalyzerPage() {
   };
 
   const onFileInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (!checkAuthForPdfUpload()) return;
     if (e.target.files && e.target.files[0]) {
       handleFileUpload(e.target.files[0]);
     }
@@ -678,6 +789,7 @@ export default function ResumeGapAnalyzerPage() {
   const onDropFile = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragOver(false);
+    if (!checkAuthForPdfUpload()) return;
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFileUpload(e.dataTransfer.files[0]);
     }
@@ -689,57 +801,22 @@ export default function ResumeGapAnalyzerPage() {
       return;
     }
 
-    // Fast-path: if inputs have not changed since last run, redirect immediately without re-calling the backend
-    if (
-      lastAnalyzedInputsRef.current &&
-      lastAnalyzedInputsRef.current.jd === jobDescription.trim() &&
-      lastAnalyzedInputsRef.current.resume === resumeText.trim()
-    ) {
-      if (finalOutput) {
-        handleNavClick("roadmap");
-        return;
-      }
-      if (hitlReview) {
-        handleNavClick("review");
-        return;
-      }
-    }
-
     setLoading(true);
     setError(null);
+    setFinalOutput(null);
+    setInsights(null);
 
     try {
-      let response: Response;
-      try {
-        response = await fetch("/api/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            job_description_text: jobDescription,
-            resume_text: resumeText,
-            company_name: companyName,
-            company_context: companyContext,
-          }),
-        });
-      } catch {
-        response = await fetch("http://localhost:8000/api/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            job_description_text: jobDescription,
-            resume_text: resumeText,
-            company_name: companyName,
-            company_context: companyContext,
-          }),
-        });
-      }
-
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => "");
-        throw new Error(
-          `Server returned ${response.status}: ${response.statusText} ${errorBody}`
-        );
-      }
+      const response = await apiFetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          job_description_text: jobDescription,
+          resume_text: resumeText,
+          company_name: companyName,
+          company_context: companyContext,
+        }),
+      });
 
       const data: AnalyzeResponse = await response.json();
       setThreadId(data.thread_id);
@@ -766,55 +843,48 @@ export default function ResumeGapAnalyzerPage() {
   };
 
   const handleResumeAnalysis = async (customAdjustment?: string) => {
-    if (!threadId) return;
-
-    const feedbackToSend =
-      customAdjustment !== undefined ? customAdjustment : userAdjustment;
-
-    // Fast-path: if finalOutput already exists and review classification + feedback have not changed, redirect immediately
-    if (finalOutput && hitlReview && lastConfirmedReviewRef.current) {
-      const prev = lastConfirmedReviewRef.current;
-      const sameMissing = JSON.stringify(prev.missing) === JSON.stringify(hitlReview.missing);
-      const sameWeak = JSON.stringify(prev.weak) === JSON.stringify(hitlReview.weak);
-      const sameStrong = JSON.stringify(prev.strong) === JSON.stringify(hitlReview.strong);
-      const sameAdj = (prev.adjustment || "").trim() === (feedbackToSend || "").trim();
-
-      if (sameMissing && sameWeak && sameStrong && sameAdj) {
-        handleNavClick("roadmap");
-        return;
-      }
+    if (!jobDescription.trim() || !resumeText.trim()) {
+      setError("Please ensure both Job Description and Resume text are provided.");
+      return;
     }
 
     setLoading(true);
     setError(null);
 
     try {
-      let response: Response;
-      try {
-        response = await fetch("/api/resume", {
+      let currentThreadId = threadId;
+
+      // If thread_id is missing (e.g. reopened history item or clear state), initialize analysis first dynamically
+      if (!currentThreadId) {
+        const initRes = await apiFetch("/api/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            thread_id: threadId,
-            user_feedback: feedbackToSend,
+            job_description_text: jobDescription,
+            resume_text: resumeText,
+            company_name: companyName,
+            company_context: companyContext,
           }),
         });
-      } catch {
-        response = await fetch("http://localhost:8000/api/resume", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            thread_id: threadId,
-            user_feedback: feedbackToSend,
-          }),
-        });
+        const initData: AnalyzeResponse = await initRes.json();
+        currentThreadId = initData.thread_id;
+        setThreadId(initData.thread_id);
+        if (initData.proposed_gap && !hitlReview) {
+          setHitlReview(initData.proposed_gap);
+        }
       }
 
-      if (!response.ok) {
-        throw new Error(
-          `Server returned ${response.status}: ${response.statusText}`
-        );
-      }
+      const feedbackToSend =
+        customAdjustment !== undefined ? customAdjustment : userAdjustment;
+
+      const response = await apiFetch("/api/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          thread_id: currentThreadId,
+          user_feedback: feedbackToSend,
+        }),
+      });
 
       const data: FinalResponse = await response.json();
       setFinalOutput(data.final_output);
@@ -1016,8 +1086,8 @@ export default function ResumeGapAnalyzerPage() {
 
           <h2>1. 48-Hour Missing Skills Roadmap</h2>
           ${(insights?.missing_roadmap || []).map((item, idx) => {
-            const bridge = getBridgeData(item.skill, idx, item.transferable_from);
-            return `
+      const bridge = getBridgeData(item.skill, idx, item.transferable_from);
+      return `
             <div class="card">
               <div style="font-weight: bold; font-size: 13px; color: var(--navy-900);">
                 <span class="badge-missing">✕ Gap</span> ${idx + 1}. ${item.skill}
@@ -1037,7 +1107,8 @@ export default function ResumeGapAnalyzerPage() {
                 </div>
               </div>
             </div>
-          `;}).join("")}
+          `;
+    }).join("")}
 
           <h2>2. Recommended Resume Bullet Rewrites</h2>
           ${(insights?.weak_improvements || []).map(w => `
@@ -1204,15 +1275,13 @@ export default function ResumeGapAnalyzerPage() {
             {isLoaded && (
               <>
                 {!isSignedIn ? (
-                  <SignInButton mode="modal">
-                    <button
-                      type="button"
-                      style={{ backgroundColor: "var(--navy-900)", color: "var(--surface)" }}
-                      className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold shadow-xs hover:opacity-90 transition cursor-pointer shrink-0"
-                    >
-                      <span>Sign In</span>
-                    </button>
-                  </SignInButton>
+                  <Link
+                    href="/sign-in"
+                    style={{ backgroundColor: "var(--navy-900)", color: "var(--surface)" }}
+                    className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-xl text-xs font-semibold shadow-xs hover:opacity-90 transition cursor-pointer shrink-0"
+                  >
+                    <span>Sign In</span>
+                  </Link>
                 ) : (
                   <div className="flex items-center pl-0.5 sm:pl-1 shrink-0">
                     <UserButton
@@ -1263,9 +1332,8 @@ export default function ResumeGapAnalyzerPage() {
                   backgroundColor: activeSection === "review" ? "var(--navy-900)" : "transparent",
                   color: activeSection === "review" ? "var(--surface)" : "var(--text-muted)",
                 }}
-                className={`shrink-0 snap-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] whitespace-nowrap text-xs ${
-                  !hitlReview && !finalOutput ? "opacity-40 cursor-not-allowed" : ""
-                }`}
+                className={`shrink-0 snap-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] whitespace-nowrap text-xs ${!hitlReview && !finalOutput ? "opacity-40 cursor-not-allowed" : ""
+                  }`}
               >
                 <TableProperties className="w-3.5 h-3.5 shrink-0" />
                 <span>Skill Verification</span>
@@ -1291,9 +1359,8 @@ export default function ResumeGapAnalyzerPage() {
                   backgroundColor: activeSection === "roadmap" ? "var(--navy-900)" : "transparent",
                   color: activeSection === "roadmap" ? "var(--surface)" : "var(--text-muted)",
                 }}
-                className={`shrink-0 snap-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] whitespace-nowrap text-xs ${
-                  !finalOutput ? "opacity-40 cursor-not-allowed" : ""
-                }`}
+                className={`shrink-0 snap-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] whitespace-nowrap text-xs ${!finalOutput ? "opacity-40 cursor-not-allowed" : ""
+                  }`}
               >
                 <Target className="w-3.5 h-3.5 shrink-0" />
                 <span>48-Hour Roadmap</span>
@@ -1307,9 +1374,8 @@ export default function ResumeGapAnalyzerPage() {
                   backgroundColor: activeSection === "bullets" ? "var(--navy-900)" : "transparent",
                   color: activeSection === "bullets" ? "var(--surface)" : "var(--text-muted)",
                 }}
-                className={`shrink-0 snap-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] whitespace-nowrap text-xs ${
-                  !finalOutput ? "opacity-40 cursor-not-allowed" : ""
-                }`}
+                className={`shrink-0 snap-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] whitespace-nowrap text-xs ${!finalOutput ? "opacity-40 cursor-not-allowed" : ""
+                  }`}
               >
                 <Wand2 className="w-3.5 h-3.5 shrink-0" />
                 <span>Resume Bullets</span>
@@ -1335,9 +1401,8 @@ export default function ResumeGapAnalyzerPage() {
                   backgroundColor: activeSection === "interview" ? "var(--navy-900)" : "transparent",
                   color: activeSection === "interview" ? "var(--surface)" : "var(--text-muted)",
                 }}
-                className={`shrink-0 snap-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] whitespace-nowrap text-xs ${
-                  !finalOutput ? "opacity-40 cursor-not-allowed" : ""
-                }`}
+                className={`shrink-0 snap-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] whitespace-nowrap text-xs ${!finalOutput ? "opacity-40 cursor-not-allowed" : ""
+                  }`}
               >
                 <MessageSquare className="w-3.5 h-3.5 shrink-0" />
                 <span>Interview Defense</span>
@@ -1490,9 +1555,8 @@ export default function ResumeGapAnalyzerPage() {
                 backgroundColor: activeSection === "review" ? "var(--navy-900)" : "transparent",
                 color: activeSection === "review" ? "var(--surface)" : "var(--text-muted)",
               }}
-              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] text-xs ${
-                !hitlReview && !finalOutput ? "opacity-40 cursor-not-allowed" : ""
-              }`}
+              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] text-xs ${!hitlReview && !finalOutput ? "opacity-40 cursor-not-allowed" : ""
+                }`}
             >
               <div className="flex items-center gap-2">
                 <TableProperties className="w-4 h-4 shrink-0" />
@@ -1520,9 +1584,8 @@ export default function ResumeGapAnalyzerPage() {
                 backgroundColor: activeSection === "roadmap" ? "var(--navy-900)" : "transparent",
                 color: activeSection === "roadmap" ? "var(--surface)" : "var(--text-muted)",
               }}
-              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] text-xs ${
-                !finalOutput ? "opacity-40 cursor-not-allowed" : ""
-              }`}
+              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] text-xs ${!finalOutput ? "opacity-40 cursor-not-allowed" : ""
+                }`}
             >
               <div className="flex items-center gap-2">
                 <Target className="w-4 h-4 shrink-0" />
@@ -1550,9 +1613,8 @@ export default function ResumeGapAnalyzerPage() {
                 backgroundColor: activeSection === "bullets" ? "var(--navy-900)" : "transparent",
                 color: activeSection === "bullets" ? "var(--surface)" : "var(--text-muted)",
               }}
-              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] text-xs ${
-                !finalOutput ? "opacity-40 cursor-not-allowed" : ""
-              }`}
+              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] text-xs ${!finalOutput ? "opacity-40 cursor-not-allowed" : ""
+                }`}
             >
               <div className="flex items-center gap-2">
                 <Wand2 className="w-4 h-4 shrink-0" />
@@ -1580,9 +1642,8 @@ export default function ResumeGapAnalyzerPage() {
                 backgroundColor: activeSection === "interview" ? "var(--navy-900)" : "transparent",
                 color: activeSection === "interview" ? "var(--surface)" : "var(--text-muted)",
               }}
-              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] text-xs ${
-                !finalOutput ? "opacity-40 cursor-not-allowed" : ""
-              }`}
+              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg transition cursor-pointer font-medium hover:bg-[var(--navy-50)] hover:text-[var(--navy-900)] text-xs ${!finalOutput ? "opacity-40 cursor-not-allowed" : ""
+                }`}
             >
               <div className="flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 shrink-0" />
@@ -1710,6 +1771,14 @@ export default function ResumeGapAnalyzerPage() {
                           type="url"
                           value={jobUrl}
                           onChange={(e) => setJobUrl(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              if (jobUrl.trim() && !fetchingUrl) {
+                                handleFetchJobUrl();
+                              }
+                            }
+                          }}
                           placeholder="Paste LinkedIn, Greenhouse, Lever, or Company URL..."
                           style={{ backgroundColor: "var(--bg)", color: "var(--text-primary)", borderColor: "var(--border)" }}
                           className="w-full pl-9 pr-3 py-1.5 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/40 focus:border-[var(--teal-600)] placeholder:text-[var(--text-muted)]/70 font-sans min-w-0"
@@ -1718,7 +1787,7 @@ export default function ResumeGapAnalyzerPage() {
                       {/* Solid Teal Fetch & Contextualize Action Button */}
                       <button
                         type="button"
-                        disabled={fetchingUrl || !jobUrl.trim()}
+                        disabled={fetchingUrl}
                         onClick={() => handleFetchJobUrl()}
                         style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
                         className="px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-2xs transition hover:bg-[var(--teal-700)] cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap"
@@ -1857,7 +1926,11 @@ export default function ResumeGapAnalyzerPage() {
                         /* Single Primary Upload Button when empty */
                         <button
                           type="button"
-                          onClick={() => fileInputRef.current?.click()}
+                          onClick={() => {
+                            if (checkAuthForPdfUpload()) {
+                              fileInputRef.current?.click();
+                            }
+                          }}
                           disabled={uploadingFile}
                           style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition hover:bg-[var(--teal-700)] cursor-pointer disabled:opacity-50"
@@ -1909,7 +1982,11 @@ export default function ResumeGapAnalyzerPage() {
                           {/* Quick Icon Actions */}
                           <button
                             type="button"
-                            onClick={() => fileInputRef.current?.click()}
+                            onClick={() => {
+                              if (checkAuthForPdfUpload()) {
+                                fileInputRef.current?.click();
+                              }
+                            }}
                             disabled={uploadingFile}
                             title="Replace / Upload new PDF"
                             style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}
@@ -1995,19 +2072,11 @@ export default function ResumeGapAnalyzerPage() {
               {/* Sources Bottom Action Bar (Anchors bottom cleanly, no dead space) */}
               <div
                 style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
-                className="p-3.5 sm:p-4 rounded-[12px] border shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-shadow flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 w-full min-w-0 max-w-full"
+                className="p-3.5 sm:p-4 rounded-[12px] border shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-shadow flex items-center justify-end gap-3 sm:gap-4 w-full min-w-0 max-w-full"
               >
-                <div style={{ color: "var(--text-muted)" }} className="flex items-center gap-2 text-xs min-w-0 flex-1">
-                  <span style={{ backgroundColor: "var(--strong)" }} className="w-2 h-2 rounded-full shadow-[0_0_6px_rgba(22,163,74,0.6)] shrink-0"></span>
-                  <span className="truncate min-w-0">
-                    Ready for audit: <strong className="text-[var(--navy-900)]">{jobDescription.split(/\s+/).filter(Boolean).length}w JD</strong>
-                    {companyName ? ` (${companyName})` : ""} &bull;{" "}
-                    <strong className="text-[var(--navy-900)]">{uploadedFileName ? uploadedFileName : `${resumeText.split(/\s+/).filter(Boolean).length}w Resume`}</strong>
-                  </span>
-                </div>
-
                 {/* Prominent Solid Teal CTA Button */}
                 <button
+                  type="button"
                   onClick={handleStartAnalysis}
                   disabled={loading}
                   style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
@@ -2134,14 +2203,19 @@ export default function ResumeGapAnalyzerPage() {
                 </div>
               </div>
 
-              {/* 3 Refined Columns for Moving Skills (Side-by-side on desktop, 1-at-a-time on mobile via tabs) */}
+              {/* 3 Drag-and-Drop Columns for Moving Skills */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 mb-5">
-                {/* Column 1: Missing Skills (✕ Missing) */}
+                {/* Column 1: Missing Skills (✕ Missing Gaps) */}
                 <div
-                  style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
-                  className={`p-3.5 sm:p-4 rounded-[12px] border flex-col justify-between shadow-2xs ${
-                    skillCategoryTab !== "missing" ? "hidden lg:flex" : "flex"
-                  }`}
+                  onDragOver={(e) => handleDragOverCol(e, "missing")}
+                  onDragLeave={() => setDragOverCol(null)}
+                  onDrop={(e) => handleDropOnCol(e, "missing")}
+                  style={{
+                    backgroundColor: "var(--bg)",
+                    borderColor: dragOverCol === "missing" ? "var(--teal-600)" : "var(--border)",
+                  }}
+                  className={`p-3.5 sm:p-4 rounded-[12px] border flex-col justify-between shadow-2xs transition-all ${dragOverCol === "missing" ? "ring-2 ring-[var(--teal-600)] bg-[var(--navy-50)]/40" : ""
+                    } ${skillCategoryTab !== "missing" ? "hidden lg:flex" : "flex"}`}
                 >
                   <div>
                     <div style={{ borderColor: "var(--border)" }} className="flex items-center justify-between pb-2 mb-2 border-b">
@@ -2153,47 +2227,44 @@ export default function ResumeGapAnalyzerPage() {
                         style={{ backgroundColor: "var(--missing-bg)", color: "var(--missing)", borderColor: "var(--missing-border)" }}
                         className="px-2 py-0.5 rounded-full text-xs font-bold border font-mono"
                       >
-                        {filteredMissing.length !== activeReview.missing.length
-                          ? `${filteredMissing.length}/${activeReview.missing.length}`
-                          : activeReview.missing.length}
+                        {filteredMissing.length}
                       </span>
                     </div>
                     <p style={{ color: "var(--text-muted)" }} className="text-[11px] mb-2.5">
-                      Zero evidence in submitted resume. Requires 48-hr proof project.
+                      Zero evidence in resume. Drag card to drop, or double-click card to promote to Strong.
                     </p>
 
-                    {/* Scrollable list with fixed max height so the page never stretches infinitely */}
-                    <div className="flex flex-col gap-1.5 max-h-[340px] sm:max-h-[380px] overflow-y-auto delta-scrollbar pr-1">
+                    <div className="flex flex-col gap-2 max-h-[360px] sm:max-h-[420px] overflow-y-auto delta-scrollbar pr-1">
                       {filteredMissing.length > 0 ? (
                         filteredMissing.map((s, i) => (
                           <div
                             key={i}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, s, "missing")}
+                            onDoubleClick={() => handleMoveSkill(s, "missing", "strong")}
                             style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
-                            className="px-2.5 py-1.5 sm:px-3 sm:py-2 border rounded-lg shadow-2xs flex items-center justify-between gap-2 group hover:border-[var(--navy-900)] transition"
+                            className="p-2.5 sm:p-3 border rounded-xl shadow-2xs flex items-center justify-between gap-2.5 group hover:border-[var(--navy-900)] transition cursor-grab active:cursor-grabbing hover:shadow-xs select-none"
+                            title="Drag card to drop into another column, or double-click to move directly to Strong"
                           >
                             <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <GripVertical className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0 opacity-40 group-hover:opacity-100 transition" />
                               <span style={{ backgroundColor: "var(--missing)" }} className="w-1.5 h-1.5 rounded-full shrink-0" />
-                              <span style={{ color: "var(--navy-900)" }} className="text-xs sm:text-[13px] font-semibold font-mono truncate" title={s}>
+                              <span style={{ color: "var(--navy-900)" }} className="text-xs sm:text-[13px] font-semibold font-mono leading-snug break-normal [word-break:normal] [overflow-wrap:anywhere] flex-1 min-w-0">
                                 {s}
                               </span>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               <button
-                                onClick={() => handleMoveSkill(s, "missing", "weak")}
-                                title="Promote to Weak / Needs Proof"
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMoveSkill(s, "missing", "weak");
+                                }}
+                                title="Move to Needs Proof (Weak)"
                                 style={{ backgroundColor: "var(--weak-bg)", color: "var(--weak)", borderColor: "var(--weak-border)" }}
-                                className="h-6 sm:h-6.5 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold border transition cursor-pointer flex items-center gap-0.5 hover:bg-[var(--weak)] hover:text-white active:scale-95 shadow-2xs"
+                                className="px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer flex items-center gap-1 hover:bg-[var(--weak)] hover:text-white active:scale-95 shadow-2xs shrink-0 whitespace-nowrap"
                               >
                                 <span>~ Weak</span>
-                                <ArrowUpRight className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={() => handleMoveSkill(s, "missing", "strong")}
-                                title="Promote to Verified Strong"
-                                style={{ backgroundColor: "var(--strong-bg)", color: "var(--strong)", borderColor: "var(--strong-border)" }}
-                                className="h-6 sm:h-6.5 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold border transition cursor-pointer flex items-center gap-0.5 hover:bg-[var(--strong)] hover:text-white active:scale-95 shadow-2xs"
-                              >
-                                <span>✓ Strong</span>
                                 <ArrowUpRight className="w-3 h-3" />
                               </button>
                             </div>
@@ -2216,12 +2287,17 @@ export default function ResumeGapAnalyzerPage() {
                   </div>
                 </div>
 
-                {/* Column 2: Weak / Needs Proof (~ Weak) */}
+                {/* Column 2: Weak / Needs Proof (~ Needs Proof) */}
                 <div
-                  style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
-                  className={`p-3.5 sm:p-4 rounded-[12px] border flex-col justify-between shadow-2xs ${
-                    skillCategoryTab !== "weak" ? "hidden lg:flex" : "flex"
-                  }`}
+                  onDragOver={(e) => handleDragOverCol(e, "weak")}
+                  onDragLeave={() => setDragOverCol(null)}
+                  onDrop={(e) => handleDropOnCol(e, "weak")}
+                  style={{
+                    backgroundColor: "var(--bg)",
+                    borderColor: dragOverCol === "weak" ? "var(--teal-600)" : "var(--border)",
+                  }}
+                  className={`p-3.5 sm:p-4 rounded-[12px] border flex-col justify-between shadow-2xs transition-all ${dragOverCol === "weak" ? "ring-2 ring-[var(--teal-600)] bg-[var(--navy-50)]/40" : ""
+                    } ${skillCategoryTab !== "weak" ? "hidden lg:flex" : "flex"}`}
                 >
                   <div>
                     <div style={{ borderColor: "var(--border)" }} className="flex items-center justify-between pb-2 mb-2 border-b">
@@ -2233,44 +2309,57 @@ export default function ResumeGapAnalyzerPage() {
                         style={{ backgroundColor: "var(--weak-bg)", color: "var(--weak)", borderColor: "var(--weak-border)" }}
                         className="px-2 py-0.5 rounded-full text-xs font-bold border font-mono"
                       >
-                        {filteredWeak.length !== activeReview.weak.length
-                          ? `${filteredWeak.length}/${activeReview.weak.length}`
-                          : activeReview.weak.length}
+                        {filteredWeak.length}
                       </span>
                     </div>
                     <p style={{ color: "var(--text-muted)" }} className="text-[11px] mb-2.5">
-                      Mentioned superficially; needs quantified XYZ bullet rewrites.
+                      Mentioned superficially. Drag card to drop, or double-click to promote.
                     </p>
 
-                    <div className="flex flex-col gap-1.5 max-h-[340px] sm:max-h-[380px] overflow-y-auto delta-scrollbar pr-1">
+                    <div className="flex flex-col gap-2 max-h-[360px] sm:max-h-[420px] overflow-y-auto delta-scrollbar pr-1">
                       {filteredWeak.length > 0 ? (
                         filteredWeak.map((s, i) => (
                           <div
                             key={i}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, s, "weak")}
+                            onDoubleClick={() => handleMoveSkill(s, "weak", "strong")}
                             style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
-                            className="px-2.5 py-1.5 sm:px-3 sm:py-2 border rounded-lg shadow-2xs flex items-center justify-between gap-2 group hover:border-[var(--navy-900)] transition"
+                            className="p-2.5 sm:p-3 border rounded-xl shadow-2xs flex flex-col gap-2 group hover:border-[var(--navy-900)] transition cursor-grab active:cursor-grabbing hover:shadow-xs select-none w-full min-w-0"
+                            title="Drag card to drop into another column, or double-click to move directly to Strong"
                           >
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                              <span style={{ backgroundColor: "var(--weak)" }} className="w-1.5 h-1.5 rounded-full shrink-0" />
-                              <span style={{ color: "var(--navy-900)" }} className="text-xs sm:text-[13px] font-semibold font-mono truncate" title={s}>
+                            {/* Top Tier: Skill Title (Gets 100% Full Width) */}
+                            <div className="flex items-center gap-2 min-w-0 w-full">
+                              <GripVertical className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0 opacity-40 group-hover:opacity-100 transition" />
+                              <span style={{ backgroundColor: "var(--weak)" }} className="w-2 h-2 rounded-full shrink-0" />
+                              <span style={{ color: "var(--navy-900)" }} className="text-xs sm:text-[13px] font-bold font-mono leading-snug break-words flex-1 min-w-0">
                                 {s}
                               </span>
                             </div>
-                            <div className="flex items-center gap-1 shrink-0">
+
+                            {/* Bottom Tier: 2 Action Buttons cleanly aligned to the right */}
+                            <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-dashed border-[var(--border)] w-full">
                               <button
-                                onClick={() => handleMoveSkill(s, "weak", "missing")}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMoveSkill(s, "weak", "missing");
+                                }}
                                 title="Demote to Missing Gap"
                                 style={{ backgroundColor: "var(--missing-bg)", color: "var(--missing)", borderColor: "var(--missing-border)" }}
-                                className="h-6 sm:h-6.5 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold border transition cursor-pointer flex items-center gap-0.5 hover:bg-[var(--missing)] hover:text-white active:scale-95 shadow-2xs"
+                                className="px-2 py-0.5 rounded-lg text-[10px] font-bold border transition cursor-pointer flex items-center gap-1 hover:bg-[var(--missing)] hover:text-white active:scale-95 shadow-2xs shrink-0"
                               >
                                 <span>✕ Gap</span>
-                                <ArrowDownRight className="w-3 h-3" />
                               </button>
                               <button
-                                onClick={() => handleMoveSkill(s, "weak", "strong")}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMoveSkill(s, "weak", "strong");
+                                }}
                                 title="Promote to Verified Strong"
                                 style={{ backgroundColor: "var(--strong-bg)", color: "var(--strong)", borderColor: "var(--strong-border)" }}
-                                className="h-6 sm:h-6.5 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold border transition cursor-pointer flex items-center gap-0.5 hover:bg-[var(--strong)] hover:text-white active:scale-95 shadow-2xs"
+                                className="px-2 py-0.5 rounded-lg text-[10px] font-bold border transition cursor-pointer flex items-center gap-1 hover:bg-[var(--strong)] hover:text-white active:scale-95 shadow-2xs shrink-0 whitespace-nowrap"
                               >
                                 <span>✓ Strong</span>
                                 <ArrowUpRight className="w-3 h-3" />
@@ -2297,10 +2386,15 @@ export default function ResumeGapAnalyzerPage() {
 
                 {/* Column 3: Verified Strong (✓ Strong) */}
                 <div
-                  style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
-                  className={`p-3.5 sm:p-4 rounded-[12px] border flex-col justify-between shadow-2xs ${
-                    skillCategoryTab !== "strong" ? "hidden lg:flex" : "flex"
-                  }`}
+                  onDragOver={(e) => handleDragOverCol(e, "strong")}
+                  onDragLeave={() => setDragOverCol(null)}
+                  onDrop={(e) => handleDropOnCol(e, "strong")}
+                  style={{
+                    backgroundColor: "var(--bg)",
+                    borderColor: dragOverCol === "strong" ? "var(--teal-600)" : "var(--border)",
+                  }}
+                  className={`p-3.5 sm:p-4 rounded-[12px] border flex-col justify-between shadow-2xs transition-all ${dragOverCol === "strong" ? "ring-2 ring-[var(--teal-600)] bg-[var(--navy-50)]/40" : ""
+                    } ${skillCategoryTab !== "strong" ? "hidden lg:flex" : "flex"}`}
                 >
                   <div>
                     <div style={{ borderColor: "var(--border)" }} className="flex items-center justify-between pb-2 mb-2 border-b">
@@ -2312,35 +2406,41 @@ export default function ResumeGapAnalyzerPage() {
                         style={{ backgroundColor: "var(--strong-bg)", color: "var(--strong)", borderColor: "var(--strong-border)" }}
                         className="px-2 py-0.5 rounded-full text-xs font-bold border font-mono"
                       >
-                        {filteredStrong.length !== activeReview.strong.length
-                          ? `${filteredStrong.length}/${activeReview.strong.length}`
-                          : activeReview.strong.length}
+                        {filteredStrong.length}
                       </span>
                     </div>
                     <p style={{ color: "var(--text-muted)" }} className="text-[11px] mb-2.5">
-                      Directly validated by strong evidence and hands-on projects.
+                      Directly validated by strong evidence. Drag card to drop to reclassify.
                     </p>
 
-                    <div className="flex flex-col gap-1.5 max-h-[340px] sm:max-h-[380px] overflow-y-auto delta-scrollbar pr-1">
+                    <div className="flex flex-col gap-2 max-h-[360px] sm:max-h-[420px] overflow-y-auto delta-scrollbar pr-1">
                       {filteredStrong.length > 0 ? (
                         filteredStrong.map((s, i) => (
                           <div
                             key={i}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, s, "strong")}
                             style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
-                            className="px-2.5 py-1.5 sm:px-3 sm:py-2 border rounded-lg shadow-2xs flex items-center justify-between gap-2 group hover:border-[var(--navy-900)] transition"
+                            className="p-2.5 sm:p-3 border rounded-xl shadow-2xs flex items-center justify-between gap-2.5 group hover:border-[var(--navy-900)] transition cursor-grab active:cursor-grabbing hover:shadow-xs select-none"
+                            title="Drag card to drop into another column"
                           >
                             <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <GripVertical className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0 opacity-40 group-hover:opacity-100 transition" />
                               <span style={{ backgroundColor: "var(--strong)" }} className="w-1.5 h-1.5 rounded-full shrink-0" />
-                              <span style={{ color: "var(--navy-900)" }} className="text-xs sm:text-[13px] font-semibold font-mono truncate" title={s}>
+                              <span style={{ color: "var(--navy-900)" }} className="text-xs sm:text-[13px] font-semibold font-mono leading-snug break-normal [word-break:normal] [overflow-wrap:anywhere] flex-1 min-w-0">
                                 {s}
                               </span>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               <button
-                                onClick={() => handleMoveSkill(s, "strong", "weak")}
-                                title="Demote to Weak / Needs Proof"
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMoveSkill(s, "strong", "weak");
+                                }}
+                                title="Demote to Needs Proof (Weak)"
                                 style={{ backgroundColor: "var(--weak-bg)", color: "var(--weak)", borderColor: "var(--weak-border)" }}
-                                className="h-6 sm:h-6.5 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold border transition cursor-pointer flex items-center gap-0.5 hover:bg-[var(--weak)] hover:text-white active:scale-95 shadow-2xs"
+                                className="px-2 py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer flex items-center gap-1 hover:bg-[var(--weak)] hover:text-white active:scale-95 shadow-2xs shrink-0 whitespace-nowrap"
                               >
                                 <span>~ Weak</span>
                                 <ArrowDownRight className="w-3 h-3" />
@@ -2391,6 +2491,7 @@ export default function ResumeGapAnalyzerPage() {
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-2">
                 <button
+                  type="button"
                   onClick={() => handleResumeAnalysis("")}
                   disabled={loading}
                   style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
@@ -2399,6 +2500,7 @@ export default function ResumeGapAnalyzerPage() {
                   Approve As Is
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleResumeAnalysis()}
                   disabled={loading}
                   style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
@@ -2420,329 +2522,395 @@ export default function ResumeGapAnalyzerPage() {
             </section>
           )}
 
-          {/* SECTION 3, 4, 5: MERGED AUTOSCROLLABLE AUDIT REPORT */}
-          {finalOutput && (
-            <div className="space-y-12 w-full min-w-0 max-w-full">
-              {/* Role Readiness Scorecard & Report Actions Banner */}
-              <div
-                style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
-                className="p-4 sm:p-6 rounded-[12px] border shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-shadow flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-5 w-full min-w-0 max-w-full"
-              >
-                <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0 flex-1">
-                  <div
-                    style={{ backgroundColor: "var(--navy-50)", borderColor: "var(--border)", color: "var(--navy-900)" }}
-                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border flex flex-col items-center justify-center shrink-0 shadow-2xs"
-                  >
-                    <span className="text-lg sm:text-xl font-black leading-none">
-                      {insights?.match_score ?? 74}%
-                    </span>
-                    <span style={{ color: "var(--text-muted)" }} className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider mt-0.5">
-                      Match
-                    </span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 style={{ color: "var(--navy-900)" }} className="text-sm sm:text-base font-bold">
-                      Role Readiness: {insights?.match_score ?? 74}%
-                    </h3>
-                    <p style={{ color: "var(--text-muted)" }} className="text-xs max-w-xl mt-0.5 leading-relaxed break-words">
-                      {insights?.executive_summary ||
-                        `High potential candidacy with ${missingCount} bridgeable engineering gaps.`}
-                    </p>
-                  </div>
-                </div>
+{/* SECTION 3, 4, 5: MERGED AUTOSCROLLABLE AUDIT REPORT */ }
+{
+  finalOutput && (
+    <div className="space-y-12 w-full min-w-0 max-w-full">
+      {/* Role Readiness Scorecard & Report Actions Banner */}
+      <div
+        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+        className="p-4 sm:p-6 rounded-[12px] border shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-shadow flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-5 w-full min-w-0 max-w-full"
+      >
+        <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0 flex-1">
+          <div
+            style={{ backgroundColor: "var(--navy-50)", borderColor: "var(--border)", color: "var(--navy-900)" }}
+            className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border flex flex-col items-center justify-center shrink-0 shadow-2xs"
+          >
+            <span className="text-lg sm:text-xl font-black leading-none">
+              {insights?.match_score ?? 74}%
+            </span>
+            <span style={{ color: "var(--text-muted)" }} className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider mt-0.5">
+              Match
+            </span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 style={{ color: "var(--navy-900)" }} className="text-sm sm:text-base font-bold">
+              Role Readiness: {insights?.match_score ?? 74}%
+            </h3>
+            <p style={{ color: "var(--text-muted)" }} className="text-xs max-w-xl mt-0.5 leading-relaxed break-words">
+              {insights?.executive_summary ||
+                `High potential candidacy with ${missingCount} bridgeable engineering gaps.`}
+            </p>
+          </div>
+        </div>
 
-                {/* Upper Body Action Buttons: Clean Copy & Download PDF */}
-                <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 w-full sm:w-auto">
+        {/* Upper Body Action Buttons: Clean Copy & Download PDF */}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 w-full sm:w-auto">
+          <button
+            onClick={handleCopyMarkdown}
+            style={{
+              backgroundColor: copied ? "var(--strong-bg)" : "var(--teal-600)",
+              color: copied ? "var(--strong)" : "var(--surface)",
+              borderColor: copied ? "var(--strong-border)" : "transparent",
+            }}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold shadow-xs transition hover:bg-[var(--teal-700)] cursor-pointer whitespace-nowrap"
+            title="Copy full analysis report"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-[var(--strong)]" />
+                <span>Copied</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+          <button
+            onClick={handleDownloadPDF}
+            style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold shadow-xs transition hover:bg-[var(--teal-700)] cursor-pointer whitespace-nowrap"
+            title="Download printable executive PDF dossier"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Download PDF</span>
+          </button>
+        </div>
+      </div>
+
+      {/* PHASE 1: 48-HOUR ROADMAP */}
+      <section id="section-roadmap" className="scroll-mt-28 lg:scroll-mt-24 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-[var(--border)] flex-wrap gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)" }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center font-bold shrink-0"
+            >
+              <Target className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 style={{ color: "var(--navy-900)" }} className="text-sm sm:text-base font-bold truncate">
+                Phase 1: 48-Hour Execution Roadmap
+              </h3>
+              <p style={{ color: "var(--text-muted)" }} className="text-[11px] sm:text-xs truncate">
+                Rapid portfolio proof projects targeting zero-evidence missing skills
+              </p>
+            </div>
+          </div>
+
+          {insights?.missing_roadmap && insights.missing_roadmap.length > 0 && (
+            <div className="flex items-center gap-2 shrink-0">
+              {(() => {
+                const roadmap = insights.missing_roadmap;
+                const allAreExpanded = roadmap.every((_, i) =>
+                  expandedRoadmapItems[i] !== undefined ? expandedRoadmapItems[i] : i === 0
+                );
+                return (
                   <button
-                    onClick={handleCopyMarkdown}
-                    style={{
-                      backgroundColor: copied ? "var(--strong-bg)" : "var(--teal-600)",
-                      color: copied ? "var(--strong)" : "var(--surface)",
-                      borderColor: copied ? "var(--strong-border)" : "transparent",
+                    onClick={() => {
+                      const nextState: Record<number, boolean> = {};
+                      roadmap.forEach((_, i) => {
+                        nextState[i] = !allAreExpanded;
+                      });
+                      setExpandedRoadmapItems(nextState);
                     }}
-                    className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold shadow-xs transition hover:bg-[var(--teal-700)] cursor-pointer whitespace-nowrap"
-                    title="Copy full analysis report"
+                    style={{ borderColor: "var(--border)", color: "var(--navy-900)" }}
+                    className="text-[10px] sm:text-[11px] font-semibold px-2.5 py-1 rounded-lg border hover:bg-[var(--navy-50)] transition cursor-pointer"
                   >
-                    {copied ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-[var(--strong)]" />
-                        <span>Copied</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Copy</span>
-                      </>
-                    )}
+                    {allAreExpanded ? "Collapse All" : "Expand All"}
                   </button>
-                  <button
-                    onClick={handleDownloadPDF}
-                    style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
-                    className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold shadow-xs transition hover:bg-[var(--teal-700)] cursor-pointer whitespace-nowrap"
-                    title="Download printable executive PDF dossier"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>Download PDF</span>
-                  </button>
-                </div>
-              </div>
+                );
+              })()}
+              <span
+                style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                className="text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 rounded-full border shrink-0"
+              >
+                {insights.missing_roadmap.length} PoCs
+              </span>
+            </div>
+          )}
+        </div>
 
-              {/* PHASE 1: 48-HOUR ROADMAP */}
-              <section id="section-roadmap" className="scroll-mt-28 lg:scroll-mt-24 space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-[var(--border)] flex-wrap gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div
-                      style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)" }}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center font-bold shrink-0"
-                    >
-                      <Target className="w-4 h-4" />
+        <div className="space-y-4">
+          {insights?.missing_roadmap && insights.missing_roadmap.length > 0 ? (
+            insights.missing_roadmap.map((item, idx) => {
+              const isProjectCopied = copiedProjectKey === idx;
+              const isExpanded =
+                expandedRoadmapItems[idx] !== undefined
+                  ? expandedRoadmapItems[idx]
+                  : idx === 0;
+              const currentMobileTab = roadmapMobileTabs[idx] || "poc";
+
+              return (
+                <div
+                  key={idx}
+                  style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                  className="rounded-[12px] border overflow-hidden shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-all w-full min-w-0 max-w-full"
+                >
+                  {/* Skill Card Header (Clickable anywhere to expand/collapse) */}
+                  <div
+                    onClick={() =>
+                      setExpandedRoadmapItems((prev) => ({
+                        ...prev,
+                        [idx]: prev[idx] !== undefined ? !prev[idx] : idx !== 0,
+                      }))
+                    }
+                    style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                    className={`p-3 sm:p-4 flex items-center justify-between gap-2.5 sm:gap-4 w-full min-w-0 cursor-pointer select-none transition hover:bg-[var(--navy-50)]/40 ${isExpanded ? "border-b" : ""
+                      }`}
+                  >
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                      <span
+                        style={{ backgroundColor: "var(--navy-900)", color: "var(--surface)" }}
+                        className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
+                      >
+                        {idx + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                          <h4 style={{ color: "var(--navy-900)" }} className="text-xs sm:text-sm font-bold font-mono truncate">
+                            {item.skill}
+                          </h4>
+                          <span
+                            style={{ backgroundColor: "var(--missing-bg)", color: "var(--missing)", borderColor: "var(--missing-border)" }}
+                            className="px-1.5 sm:px-2 py-0.2 rounded-full text-[9px] sm:text-[10px] font-bold border uppercase tracking-wider shrink-0"
+                          >
+                            ✕ Gap Deliverable
+                          </span>
+                        </div>
+                        <p style={{ color: "var(--text-muted)" }} className="text-[11px] truncate hidden sm:block mt-0.5">
+                          Addressed via 48-hr proof deliverable & experience anchor
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <h3 style={{ color: "var(--navy-900)" }} className="text-sm sm:text-base font-bold truncate">
-                        Phase 1: 48-Hour Execution Roadmap
-                      </h3>
-                      <p style={{ color: "var(--text-muted)" }} className="text-[11px] sm:text-xs truncate">
-                        Rapid portfolio proof projects targeting zero-evidence missing skills
-                      </p>
+
+                    {/* Top Action Pills & Chevron */}
+                    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const bridge = getBridgeData(item.skill, idx, item.transferable_from);
+                          handleCopyProject(
+                            idx,
+                            `48-Hour PoC Project for ${item.skill}:\n${item.bridge_project}\n\nResume Anchor Project:\n${bridge.project}\n\nResume Bridge Angle:\n${bridge.pitch}`
+                          );
+                        }}
+                        style={{
+                          backgroundColor: isProjectCopied ? "var(--strong-bg)" : "var(--teal-600)",
+                          borderColor: isProjectCopied ? "var(--strong-border)" : "transparent",
+                          color: isProjectCopied ? "var(--strong)" : "var(--surface)",
+                        }}
+                        className="flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold shadow-xs transition hover:bg-[var(--teal-700)] cursor-pointer"
+                        title="Copy PoC Details"
+                      >
+                        {isProjectCopied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-[var(--strong)]" />
+                            <span className="hidden sm:inline">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Copy PoC</span>
+                          </>
+                        )}
+                      </button>
+
+                      <div
+                        style={{ color: "var(--text-muted)" }}
+                        className="p-1 rounded-md hover:bg-[var(--navy-50)] text-[var(--navy-700)] transition"
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {insights?.missing_roadmap && insights.missing_roadmap.length > 0 && (
-                    <div className="flex items-center gap-2 shrink-0">
-                      {(() => {
-                        const roadmap = insights.missing_roadmap;
-                        const allAreExpanded = roadmap.every((_, i) =>
-                          expandedRoadmapItems[i] !== undefined ? expandedRoadmapItems[i] : i === 0
-                        );
-                        return (
-                          <button
-                            onClick={() => {
-                              const nextState: Record<number, boolean> = {};
-                              roadmap.forEach((_, i) => {
-                                nextState[i] = !allAreExpanded;
-                              });
-                              setExpandedRoadmapItems(nextState);
-                            }}
-                            style={{ borderColor: "var(--border)", color: "var(--navy-900)" }}
-                            className="text-[10px] sm:text-[11px] font-semibold px-2.5 py-1 rounded-lg border hover:bg-[var(--navy-50)] transition cursor-pointer"
-                          >
-                            {allAreExpanded ? "Collapse All" : "Expand All"}
-                          </button>
-                        );
-                      })()}
-                      <span
-                        style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)", borderColor: "var(--border)" }}
-                        className="text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 rounded-full border shrink-0"
-                      >
-                        {insights.missing_roadmap.length} PoCs
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-4">
-              {insights?.missing_roadmap && insights.missing_roadmap.length > 0 ? (
-                insights.missing_roadmap.map((item, idx) => {
-                  const isProjectCopied = copiedProjectKey === idx;
-                  const isExpanded =
-                    expandedRoadmapItems[idx] !== undefined
-                      ? expandedRoadmapItems[idx]
-                      : idx === 0;
-                  const currentMobileTab = roadmapMobileTabs[idx] || "poc";
-
-                  return (
-                    <div
-                      key={idx}
-                      style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
-                      className="rounded-[12px] border overflow-hidden shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-all w-full min-w-0 max-w-full"
-                    >
-                      {/* Skill Card Header (Clickable anywhere to expand/collapse) */}
-                      <div
-                        onClick={() =>
-                          setExpandedRoadmapItems((prev) => ({
-                            ...prev,
-                            [idx]: prev[idx] !== undefined ? !prev[idx] : idx !== 0,
-                          }))
-                        }
-                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
-                        className={`p-3 sm:p-4 flex items-center justify-between gap-2.5 sm:gap-4 w-full min-w-0 cursor-pointer select-none transition hover:bg-[var(--navy-50)]/40 ${
-                          isExpanded ? "border-b" : ""
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
-                          <span
-                            style={{ backgroundColor: "var(--navy-900)", color: "var(--surface)" }}
-                            className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
-                          >
-                            {idx + 1}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                              <h4 style={{ color: "var(--navy-900)" }} className="text-xs sm:text-sm font-bold font-mono truncate">
-                                {item.skill}
-                              </h4>
-                              <span
-                                style={{ backgroundColor: "var(--missing-bg)", color: "var(--missing)", borderColor: "var(--missing-border)" }}
-                                className="px-1.5 sm:px-2 py-0.2 rounded-full text-[9px] sm:text-[10px] font-bold border uppercase tracking-wider shrink-0"
-                              >
-                                ✕ Gap Deliverable
-                              </span>
-                            </div>
-                            <p style={{ color: "var(--text-muted)" }} className="text-[11px] truncate hidden sm:block mt-0.5">
-                              Addressed via 48-hr proof deliverable & experience anchor
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Top Action Pills & Chevron */}
-                        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const bridge = getBridgeData(item.skill, idx, item.transferable_from);
-                              handleCopyProject(
-                                idx,
-                                `48-Hour PoC Project for ${item.skill}:\n${item.bridge_project}\n\nResume Anchor Project:\n${bridge.project}\n\nResume Bridge Angle:\n${bridge.pitch}`
-                              );
-                            }}
-                            style={{
-                              backgroundColor: isProjectCopied ? "var(--strong-bg)" : "var(--teal-600)",
-                              borderColor: isProjectCopied ? "var(--strong-border)" : "transparent",
-                              color: isProjectCopied ? "var(--strong)" : "var(--surface)",
-                            }}
-                            className="flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold shadow-xs transition hover:bg-[var(--teal-700)] cursor-pointer"
-                            title="Copy PoC Details"
-                          >
-                            {isProjectCopied ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-[var(--strong)]" />
-                                <span className="hidden sm:inline">Copied</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5" />
-                                <span className="hidden sm:inline">Copy PoC</span>
-                              </>
-                            )}
-                          </button>
-
-                          <div
-                            style={{ color: "var(--text-muted)" }}
-                            className="p-1 rounded-md hover:bg-[var(--navy-50)] text-[var(--navy-700)] transition"
-                          >
-                            {isExpanded ? (
-                              <ChevronUp className="w-4 h-4" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4" />
-                            )}
-                          </div>
-                        </div>
+                  {/* Expandable Body: 3-Tab Switcher on Mobile, 3 Columns on Desktop */}
+                  {isExpanded && (
+                    <div className="p-3 sm:p-4.5">
+                      {/* Mobile View Tab Switcher: Cuts vertical height by 70% */}
+                      <div className="flex lg:hidden items-center p-1 rounded-xl bg-[var(--bg)] border border-[var(--border)] gap-1 mb-3">
+                        <button
+                          onClick={() =>
+                            setRoadmapMobileTabs((prev) => ({ ...prev, [idx]: "poc" }))
+                          }
+                          style={{
+                            backgroundColor: currentMobileTab === "poc" ? "var(--surface)" : "transparent",
+                            color: currentMobileTab === "poc" ? "var(--navy-900)" : "var(--text-muted)",
+                            boxShadow: currentMobileTab === "poc" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                          }}
+                          className="flex-1 py-1 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Flame className="w-3.5 h-3.5 text-[var(--navy-700)]" />
+                          <span>48-Hr PoC</span>
+                        </button>
+                        <button
+                          onClick={() =>
+                            setRoadmapMobileTabs((prev) => ({ ...prev, [idx]: "why" }))
+                          }
+                          style={{
+                            backgroundColor: currentMobileTab === "why" ? "var(--surface)" : "transparent",
+                            color: currentMobileTab === "why" ? "var(--navy-900)" : "var(--text-muted)",
+                            boxShadow: currentMobileTab === "why" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                          }}
+                          className="flex-1 py-1 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Building2 className="w-3.5 h-3.5 text-[var(--navy-700)]" />
+                          <span>Why Needed</span>
+                        </button>
+                        <button
+                          onClick={() =>
+                            setRoadmapMobileTabs((prev) => ({ ...prev, [idx]: "bridge" }))
+                          }
+                          style={{
+                            backgroundColor: currentMobileTab === "bridge" ? "var(--surface)" : "transparent",
+                            color: currentMobileTab === "bridge" ? "var(--navy-900)" : "var(--text-muted)",
+                            boxShadow: currentMobileTab === "bridge" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                          }}
+                          className="flex-1 py-1 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Award className="w-3.5 h-3.5 text-[var(--navy-700)]" />
+                          <span>Resume Bridge</span>
+                        </button>
                       </div>
 
-                      {/* Expandable Body: 3-Tab Switcher on Mobile, 3 Columns on Desktop */}
-                      {isExpanded && (
-                        <div className="p-3 sm:p-4.5">
-                          {/* Mobile View Tab Switcher: Cuts vertical height by 70% */}
-                          <div className="flex lg:hidden items-center p-1 rounded-xl bg-[var(--bg)] border border-[var(--border)] gap-1 mb-3">
-                            <button
-                              onClick={() =>
-                                setRoadmapMobileTabs((prev) => ({ ...prev, [idx]: "poc" }))
-                              }
-                              style={{
-                                backgroundColor: currentMobileTab === "poc" ? "var(--surface)" : "transparent",
-                                color: currentMobileTab === "poc" ? "var(--navy-900)" : "var(--text-muted)",
-                                boxShadow: currentMobileTab === "poc" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                              }}
-                              className="flex-1 py-1 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
-                            >
-                              <Flame className="w-3.5 h-3.5 text-[var(--navy-700)]" />
-                              <span>48-Hr PoC</span>
-                            </button>
-                            <button
-                              onClick={() =>
-                                setRoadmapMobileTabs((prev) => ({ ...prev, [idx]: "why" }))
-                              }
-                              style={{
-                                backgroundColor: currentMobileTab === "why" ? "var(--surface)" : "transparent",
-                                color: currentMobileTab === "why" ? "var(--navy-900)" : "var(--text-muted)",
-                                boxShadow: currentMobileTab === "why" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                              }}
-                              className="flex-1 py-1 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
-                            >
-                              <Building2 className="w-3.5 h-3.5 text-[var(--navy-700)]" />
-                              <span>Why Needed</span>
-                            </button>
-                            <button
-                              onClick={() =>
-                                setRoadmapMobileTabs((prev) => ({ ...prev, [idx]: "bridge" }))
-                              }
-                              style={{
-                                backgroundColor: currentMobileTab === "bridge" ? "var(--surface)" : "transparent",
-                                color: currentMobileTab === "bridge" ? "var(--navy-900)" : "var(--text-muted)",
-                                boxShadow: currentMobileTab === "bridge" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                              }}
-                              className="flex-1 py-1 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
-                            >
-                              <Award className="w-3.5 h-3.5 text-[var(--navy-700)]" />
-                              <span>Resume Bridge</span>
-                            </button>
-                          </div>
-
-                          {/* 3 CARDS: Responsive 3-Column on desktop, 1 tab on mobile */}
-                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5 sm:gap-4.5">
-                            {/* Card 1: 48-Hour PoC Project (Primary Deliverable) */}
-                            <div
-                              style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
-                              className={`p-3 sm:p-4 rounded-[12px] border flex-col justify-between shadow-2xs hover:border-[var(--navy-900)] transition ${
-                                currentMobileTab !== "poc" ? "hidden lg:flex" : "flex"
-                              }`}
-                            >
-                              <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                  <div
-                                    style={{ backgroundColor: "var(--surface)", color: "var(--navy-900)", borderColor: "var(--border)" }}
-                                    className="w-6 h-6 rounded-lg border flex items-center justify-center shrink-0"
-                                  >
-                                    <Flame className="w-3.5 h-3.5 text-[var(--navy-700)]" />
-                                  </div>
-                                  <span style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider">
-                                    48-Hour PoC Project
-                                  </span>
-                                </div>
-
-                                {item.project_keywords && item.project_keywords.length > 0 && (
-                                  <div className="flex flex-wrap gap-1.5 mb-2.5">
-                                    {item.project_keywords.map((kw, kidx) => (
-                                      <span
-                                        key={kidx}
-                                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-700)" }}
-                                        className="px-2 py-0.5 rounded-md border text-[10px] font-semibold font-mono"
-                                      >
-                                        🛠️ {kw}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-
-                                <div className="space-y-2 text-xs sm:text-sm text-[var(--text-primary)] leading-relaxed font-sans">
-                                  <p className="font-medium">
-                                    {item.bridge_project}
-                                  </p>
-                                </div>
+                      {/* 3 CARDS: Responsive 3-Column on desktop, 1 tab on mobile */}
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5 sm:gap-4.5">
+                        {/* Card 1: 48-Hour PoC Project (Primary Deliverable) */}
+                        <div
+                          style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                          className={`p-3 sm:p-4 rounded-[12px] border flex-col justify-between shadow-2xs hover:border-[var(--navy-900)] transition ${currentMobileTab !== "poc" ? "hidden lg:flex" : "flex"
+                            }`}
+                        >
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <div
+                                style={{ backgroundColor: "var(--surface)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                                className="w-6 h-6 rounded-lg border flex items-center justify-center shrink-0"
+                              >
+                                <Flame className="w-3.5 h-3.5 text-[var(--navy-700)]" />
                               </div>
-
-                              <div style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} className="pt-2.5 mt-2.5 border-t text-[10px] font-semibold uppercase tracking-wider flex items-center justify-between">
-                                <span>Deliverable Project</span>
-                                <span style={{ color: "var(--navy-900)" }} className="font-mono font-bold">48 Hrs</span>
-                              </div>
+                              <span style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider">
+                                48-Hour PoC Project
+                              </span>
                             </div>
 
-                            {/* Card 2: Why Company Wants This */}
+                            {item.project_keywords && item.project_keywords.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mb-2.5">
+                                {item.project_keywords.map((kw, kidx) => (
+                                  <span
+                                    key={kidx}
+                                    style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-700)" }}
+                                    className="px-2 py-0.5 rounded-md border text-[10px] font-semibold font-mono"
+                                  >
+                                    🛠️ {kw}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="space-y-2 text-xs sm:text-sm text-[var(--text-primary)] leading-relaxed font-sans">
+                              <p className="font-medium">
+                                {item.bridge_project}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} className="pt-2.5 mt-2.5 border-t text-[10px] font-semibold uppercase tracking-wider flex items-center justify-between">
+                            <span>Deliverable Project</span>
+                            <span style={{ color: "var(--navy-900)" }} className="font-mono font-bold">48 Hrs</span>
+                          </div>
+                        </div>
+
+                        {/* Card 2: Why Company Wants This */}
+                        <div
+                          style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                          className={`p-3 sm:p-4 rounded-[12px] border flex-col justify-between shadow-2xs hover:border-[var(--navy-900)] transition ${currentMobileTab !== "why" ? "hidden lg:flex" : "flex"
+                            }`}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <div className="flex items-center gap-2">
+                                <div
+                                  style={{ backgroundColor: "var(--surface)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                                  className="w-6 h-6 rounded-lg border flex items-center justify-center shrink-0"
+                                >
+                                  <Building2 className="w-3.5 h-3.5 text-[var(--navy-700)]" />
+                                </div>
+                                <span style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider">
+                                  {effectiveCompanyName
+                                    ? `Why ${effectiveCompanyName.toUpperCase()} Wants`
+                                    : "Why Role Requires"}
+                                </span>
+                              </div>
+                              {effectiveCompanyName && (
+                                <span
+                                  style={{ backgroundColor: "var(--surface)", color: "var(--navy-700)", borderColor: "var(--border)" }}
+                                  className="text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0"
+                                >
+                                  {sourcePlatform || "Target Grounded"}
+                                </span>
+                              )}
+                            </div>
+
+                            {item.company_keywords && item.company_keywords.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mb-2.5">
+                                {item.company_keywords.map((kw, kidx) => (
+                                  <span
+                                    key={kidx}
+                                    style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-700)" }}
+                                    className="px-2 py-0.5 rounded-md border text-[10px] font-semibold"
+                                  >
+                                    #{kw}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            <p style={{ color: "var(--text-primary)" }} className="text-xs sm:text-sm opacity-90 leading-relaxed font-sans">
+                              {item.why_it_matters}
+                            </p>
+                          </div>
+
+                          <div style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} className="pt-2.5 mt-2.5 border-t text-[10px] font-semibold uppercase tracking-wider flex items-center justify-between">
+                            <span>
+                              {effectiveCompanyName
+                                ? `${effectiveCompanyName} Intent`
+                                : "Hiring Manager Intent"}
+                            </span>
+                            {effectiveCompanyName && (
+                              <span className="text-[9px] font-bold text-[var(--strong)] flex items-center gap-0.5">
+                                <Check className="w-2.5 h-2.5 text-[var(--strong)]" />
+                                <span>Target Grounded</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Card 3: Resume Bridge */}
+                        {(() => {
+                          const bridge = getBridgeData(item.skill, idx, item.transferable_from);
+                          return (
                             <div
                               style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
-                              className={`p-3 sm:p-4 rounded-[12px] border flex-col justify-between shadow-2xs hover:border-[var(--navy-900)] transition ${
-                                currentMobileTab !== "why" ? "hidden lg:flex" : "flex"
-                              }`}
+                              className={`p-3 sm:p-4 rounded-[12px] border flex-col justify-between shadow-2xs hover:border-[var(--navy-900)] transition ${currentMobileTab !== "bridge" ? "hidden lg:flex" : "flex"
+                                }`}
                             >
                               <div>
                                 <div className="flex items-center justify-between gap-2 mb-2">
@@ -2751,491 +2919,422 @@ export default function ResumeGapAnalyzerPage() {
                                       style={{ backgroundColor: "var(--surface)", color: "var(--navy-900)", borderColor: "var(--border)" }}
                                       className="w-6 h-6 rounded-lg border flex items-center justify-center shrink-0"
                                     >
-                                      <Building2 className="w-3.5 h-3.5 text-[var(--navy-700)]" />
+                                      <Award className="w-3.5 h-3.5 text-[var(--navy-700)]" />
                                     </div>
                                     <span style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider">
-                                      {effectiveCompanyName
-                                        ? `Why ${effectiveCompanyName.toUpperCase()} Wants`
-                                        : "Why Role Requires"}
+                                      Resume Bridge
                                     </span>
                                   </div>
-                                  {effectiveCompanyName && (
-                                    <span
-                                      style={{ backgroundColor: "var(--surface)", color: "var(--navy-700)", borderColor: "var(--border)" }}
-                                      className="text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0"
-                                    >
-                                      {sourcePlatform || "Target Grounded"}
-                                    </span>
-                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateBridge(item.skill, { isEditing: !bridge.isEditing })
+                                    }
+                                    style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                                    className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md border transition cursor-pointer hover:bg-[var(--navy-50)]"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                    <span>{bridge.isEditing ? "Close" : "Edit Bridge"}</span>
+                                  </button>
                                 </div>
 
-                                {item.company_keywords && item.company_keywords.length > 0 && (
-                                  <div className="flex flex-wrap gap-1.5 mb-2.5">
-                                    {item.company_keywords.map((kw, kidx) => (
-                                      <span
-                                        key={kidx}
-                                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-700)" }}
-                                        className="px-2 py-0.5 rounded-md border text-[10px] font-semibold"
+                                {bridge.isEditing ? (
+                                  <div className="space-y-2.5 pt-1">
+                                    <div>
+                                      <label style={{ color: "var(--navy-900)" }} className="block text-[10px] font-bold uppercase tracking-wider mb-1">
+                                        Select from Resume Projects:
+                                      </label>
+                                      <select
+                                        value={
+                                          detectedResumeProjects.includes(bridge.project)
+                                            ? bridge.project
+                                            : "__custom__"
+                                        }
+                                        onChange={(e) => {
+                                          if (e.target.value !== "__custom__") {
+                                            updateBridge(item.skill, { project: e.target.value });
+                                          }
+                                        }}
+                                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                                        className="w-full text-xs p-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/40 focus:border-[var(--teal-600)] truncate"
                                       >
-                                        #{kw}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
+                                        {detectedResumeProjects.map((p, pidx) => (
+                                          <option key={pidx} value={p}>
+                                            {p}
+                                          </option>
+                                        ))}
+                                        <option value="__custom__">
+                                          ✎ Custom Project Name...
+                                        </option>
+                                      </select>
+                                    </div>
 
-                                <p style={{ color: "var(--text-primary)" }} className="text-xs sm:text-sm opacity-90 leading-relaxed font-sans">
-                                  {item.why_it_matters}
-                                </p>
+                                    <div>
+                                      <label style={{ color: "var(--text-muted)" }} className="block text-[10px] font-bold uppercase tracking-wider mb-1">
+                                        Project Name Anchor:
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={bridge.project}
+                                        onChange={(e) =>
+                                          updateBridge(item.skill, { project: e.target.value })
+                                        }
+                                        placeholder="e.g. FastAPI Microservice / Auth Pipeline"
+                                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                                        className="w-full text-xs p-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/40 focus:border-[var(--teal-600)]"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label style={{ color: "var(--text-muted)" }} className="block text-[10px] font-bold uppercase tracking-wider mb-1">
+                                        Bridge Pitch / Narrative:
+                                      </label>
+                                      <textarea
+                                        rows={2}
+                                        value={bridge.pitch}
+                                        onChange={(e) =>
+                                          updateBridge(item.skill, { pitch: e.target.value })
+                                        }
+                                        placeholder="Explain how your real project proves transferable capability..."
+                                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                                        className="w-full text-xs p-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/40 focus:border-[var(--teal-600)] resize-none leading-relaxed"
+                                      />
+                                    </div>
+
+                                    <div className="flex items-center justify-between pt-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => resetBridge(item.skill)}
+                                        style={{ color: "var(--text-muted)" }}
+                                        className="text-[10px] font-semibold hover:text-[var(--navy-900)] hover:underline transition cursor-pointer"
+                                      >
+                                        Reset
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          updateBridge(item.skill, { isEditing: false })
+                                        }
+                                        style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
+                                        className="px-2.5 py-1 text-[10px] font-semibold rounded-lg shadow-2xs transition hover:bg-[var(--teal-700)] cursor-pointer flex items-center gap-1"
+                                      >
+                                        <Check className="w-3 h-3" />
+                                        <span>Save</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div
+                                      style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                                      className="mb-2 p-2 rounded-xl border"
+                                    >
+                                      <div style={{ color: "var(--navy-900)" }} className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 mb-0.5">
+                                        <FolderGit2 className="w-3 h-3 text-[var(--navy-700)]" />
+                                        <span>Resume Anchor:</span>
+                                      </div>
+                                      <p style={{ color: "var(--text-primary)" }} className="text-xs font-semibold leading-snug line-clamp-2">
+                                        {bridge.project}
+                                      </p>
+                                    </div>
+
+                                    {item.bridge_keywords && item.bridge_keywords.length > 0 && (
+                                      <div className="flex flex-wrap gap-1.5 mb-2">
+                                        {item.bridge_keywords.map((kw, kidx) => (
+                                          <span
+                                            key={kidx}
+                                            style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-700)" }}
+                                            className="px-2 py-0.5 rounded-md border text-[10px] font-semibold"
+                                          >
+                                            🌉 {kw}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    <p style={{ color: "var(--text-primary)" }} className="text-xs sm:text-sm opacity-90 leading-relaxed font-sans">
+                                      {bridge.pitch}
+                                    </p>
+                                  </>
+                                )}
                               </div>
 
                               <div style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} className="pt-2.5 mt-2.5 border-t text-[10px] font-semibold uppercase tracking-wider flex items-center justify-between">
-                                <span>
-                                  {effectiveCompanyName
-                                    ? `${effectiveCompanyName} Intent`
-                                    : "Hiring Manager Intent"}
-                                </span>
-                                {effectiveCompanyName && (
-                                  <span className="text-[9px] font-bold text-[var(--strong)] flex items-center gap-0.5">
-                                    <Check className="w-2.5 h-2.5 text-[var(--strong)]" />
-                                    <span>Target Grounded</span>
+                                <span>Connect Your Project</span>
+                                {bridge.isModified && (
+                                  <span
+                                    style={{ backgroundColor: "var(--surface)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+                                    className="text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase"
+                                  >
+                                    Customized
                                   </span>
                                 )}
                               </div>
                             </div>
-
-                            {/* Card 3: Resume Bridge */}
-                            {(() => {
-                              const bridge = getBridgeData(item.skill, idx, item.transferable_from);
-                              return (
-                                <div
-                                  style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
-                                  className={`p-3 sm:p-4 rounded-[12px] border flex-col justify-between shadow-2xs hover:border-[var(--navy-900)] transition ${
-                                    currentMobileTab !== "bridge" ? "hidden lg:flex" : "flex"
-                                  }`}
-                                >
-                                  <div>
-                                    <div className="flex items-center justify-between gap-2 mb-2">
-                                      <div className="flex items-center gap-2">
-                                        <div
-                                          style={{ backgroundColor: "var(--surface)", color: "var(--navy-900)", borderColor: "var(--border)" }}
-                                          className="w-6 h-6 rounded-lg border flex items-center justify-center shrink-0"
-                                        >
-                                          <Award className="w-3.5 h-3.5 text-[var(--navy-700)]" />
-                                        </div>
-                                        <span style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider">
-                                          Resume Bridge
-                                        </span>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          updateBridge(item.skill, { isEditing: !bridge.isEditing })
-                                        }
-                                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
-                                        className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md border transition cursor-pointer hover:bg-[var(--navy-50)]"
-                                      >
-                                        <Pencil className="w-3 h-3" />
-                                        <span>{bridge.isEditing ? "Close" : "Edit Bridge"}</span>
-                                      </button>
-                                    </div>
-
-                                    {bridge.isEditing ? (
-                                      <div className="space-y-2.5 pt-1">
-                                        <div>
-                                          <label style={{ color: "var(--navy-900)" }} className="block text-[10px] font-bold uppercase tracking-wider mb-1">
-                                            Select from Resume Projects:
-                                          </label>
-                                          <select
-                                            value={
-                                              detectedResumeProjects.includes(bridge.project)
-                                                ? bridge.project
-                                                : "__custom__"
-                                            }
-                                            onChange={(e) => {
-                                              if (e.target.value !== "__custom__") {
-                                                updateBridge(item.skill, { project: e.target.value });
-                                              }
-                                            }}
-                                            style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
-                                            className="w-full text-xs p-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/40 focus:border-[var(--teal-600)] truncate"
-                                          >
-                                            {detectedResumeProjects.map((p, pidx) => (
-                                              <option key={pidx} value={p}>
-                                                {p}
-                                              </option>
-                                            ))}
-                                            <option value="__custom__">
-                                              ✎ Custom Project Name...
-                                            </option>
-                                          </select>
-                                        </div>
-
-                                        <div>
-                                          <label style={{ color: "var(--text-muted)" }} className="block text-[10px] font-bold uppercase tracking-wider mb-1">
-                                            Project Name Anchor:
-                                          </label>
-                                          <input
-                                            type="text"
-                                            value={bridge.project}
-                                            onChange={(e) =>
-                                              updateBridge(item.skill, { project: e.target.value })
-                                            }
-                                            placeholder="e.g. FastAPI Microservice / Auth Pipeline"
-                                            style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
-                                            className="w-full text-xs p-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/40 focus:border-[var(--teal-600)]"
-                                          />
-                                        </div>
-
-                                        <div>
-                                          <label style={{ color: "var(--text-muted)" }} className="block text-[10px] font-bold uppercase tracking-wider mb-1">
-                                            Bridge Pitch / Narrative:
-                                          </label>
-                                          <textarea
-                                            rows={2}
-                                            value={bridge.pitch}
-                                            onChange={(e) =>
-                                              updateBridge(item.skill, { pitch: e.target.value })
-                                            }
-                                            placeholder="Explain how your real project proves transferable capability..."
-                                            style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
-                                            className="w-full text-xs p-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/40 focus:border-[var(--teal-600)] resize-none leading-relaxed"
-                                          />
-                                        </div>
-
-                                        <div className="flex items-center justify-between pt-1">
-                                          <button
-                                            type="button"
-                                            onClick={() => resetBridge(item.skill)}
-                                            style={{ color: "var(--text-muted)" }}
-                                            className="text-[10px] font-semibold hover:text-[var(--navy-900)] hover:underline transition cursor-pointer"
-                                          >
-                                            Reset
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              updateBridge(item.skill, { isEditing: false })
-                                            }
-                                            style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
-                                            className="px-2.5 py-1 text-[10px] font-semibold rounded-lg shadow-2xs transition hover:bg-[var(--teal-700)] cursor-pointer flex items-center gap-1"
-                                          >
-                                            <Check className="w-3 h-3" />
-                                            <span>Save</span>
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <>
-                                        <div
-                                          style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
-                                          className="mb-2 p-2 rounded-xl border"
-                                        >
-                                          <div style={{ color: "var(--navy-900)" }} className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 mb-0.5">
-                                            <FolderGit2 className="w-3 h-3 text-[var(--navy-700)]" />
-                                            <span>Resume Anchor:</span>
-                                          </div>
-                                          <p style={{ color: "var(--text-primary)" }} className="text-xs font-semibold leading-snug line-clamp-2">
-                                            {bridge.project}
-                                          </p>
-                                        </div>
-
-                                        {item.bridge_keywords && item.bridge_keywords.length > 0 && (
-                                          <div className="flex flex-wrap gap-1.5 mb-2">
-                                            {item.bridge_keywords.map((kw, kidx) => (
-                                              <span
-                                                key={kidx}
-                                                style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-700)" }}
-                                                className="px-2 py-0.5 rounded-md border text-[10px] font-semibold"
-                                              >
-                                                🌉 {kw}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        )}
-
-                                        <p style={{ color: "var(--text-primary)" }} className="text-xs sm:text-sm opacity-90 leading-relaxed font-sans">
-                                          {bridge.pitch}
-                                        </p>
-                                      </>
-                                    )}
-                                  </div>
-
-                                  <div style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} className="pt-2.5 mt-2.5 border-t text-[10px] font-semibold uppercase tracking-wider flex items-center justify-between">
-                                    <span>Connect Your Project</span>
-                                    {bridge.isModified && (
-                                      <span
-                                        style={{ backgroundColor: "var(--surface)", color: "var(--navy-900)", borderColor: "var(--border)" }}
-                                        className="text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase"
-                                      >
-                                        Customized
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              ) : (
-                <div
-                  style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
-                  className="p-8 rounded-[12px] border text-center text-xs"
-                >
-                  No critical missing skill gaps detected.
-                </div>
-              )}
-                </div>
-              </section>
-
-              {/* PHASE 2: RESUME BULLETS */}
-              <section id="section-bullets" className="scroll-mt-28 lg:scroll-mt-24 space-y-4 pt-6 border-t border-[var(--border)]">
-                <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      style={{ backgroundColor: "var(--weak-bg)", color: "var(--weak)" }}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center font-bold"
-                    >
-                      <Wand2 className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 style={{ color: "var(--navy-900)" }} className="text-sm sm:text-base font-bold">
-                        Phase 2: Resume Bullet Improvements
-                      </h3>
-                      <p style={{ color: "var(--text-muted)" }} className="text-[11px] sm:text-xs">
-                        Quantified XYZ impact rewrites targeting weak skills and experiential bridges
-                      </p>
-                    </div>
-                  </div>
-                  {insights?.weak_improvements && (
-                    <span
-                      style={{ backgroundColor: "var(--weak-bg)", color: "var(--weak)", borderColor: "var(--weak-border)" }}
-                      className="text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 rounded-full border shrink-0"
-                    >
-                      {insights.weak_improvements.length} Rewrites
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-4 w-full min-w-0 max-w-full">
-              {insights?.weak_improvements && insights.weak_improvements.length > 0 ? (
-                insights.weak_improvements.map((item, idx) => (
-                  <div
-                    key={idx}
-                    style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
-                    className="p-4 sm:p-5 rounded-[12px] border shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] space-y-3 transition-shadow w-full min-w-0 max-w-full"
-                  >
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <span
-                        style={{ backgroundColor: "var(--weak-bg)", color: "var(--weak)", borderColor: "var(--weak-border)" }}
-                        className="px-2.5 py-1 rounded-lg border font-mono text-xs font-bold"
-                      >
-                        ~ {item.skill}
-                      </span>
-                      <span style={{ color: "var(--text-muted)" }} className="text-xs font-medium">XYZ Impact Model</span>
-                    </div>
-
-                    <div className="space-y-2">
-                      {item.recommended_bullets.map((bullet, bidx) => {
-                        const bulletKey = `${item.skill}-${bidx}`;
-                        const isBulletCopied = copiedBulletKey === bulletKey;
-                        return (
-                          <div
-                            key={bidx}
-                            style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
-                            className="p-3 sm:p-3.5 rounded-xl border flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-2.5 sm:gap-3 group hover:border-[var(--navy-900)] transition"
-                          >
-                            <div className="flex items-start gap-2.5 flex-grow min-w-0">
-                              <span style={{ color: "var(--navy-700)" }} className="font-bold mt-0.5 shrink-0">•</span>
-                              <p style={{ color: "var(--text-primary)" }} className="text-xs sm:text-sm opacity-90 leading-relaxed font-sans break-words">
-                                {bullet}
-                              </p>
-                            </div>
-
-                            <button
-                              onClick={() => handleCopyBullet(bulletKey, bullet)}
-                              style={{
-                                backgroundColor: isBulletCopied ? "var(--strong-bg)" : "var(--teal-600)",
-                                borderColor: isBulletCopied ? "var(--strong-border)" : "transparent",
-                                color: isBulletCopied ? "var(--strong)" : "var(--surface)",
-                              }}
-                              className="self-end sm:self-auto flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold shadow-xs transition hover:bg-[var(--teal-700)] cursor-pointer shrink-0"
-                            >
-                              {isBulletCopied ? (
-                                <>
-                                  <Check className="w-3.5 h-3.5 text-[var(--strong)]" />
-                                  <span>Copied</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3.5 h-3.5" />
-                                  <span>Copy</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div
-                  style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
-                  className="p-8 rounded-[12px] border text-center text-xs"
-                >
-                  No weak bullet improvements needed.
-                </div>
-              )}
-                </div>
-              </section>
-
-              {/* PHASE 3: INTERVIEW DEFENSE */}
-              <section id="section-interview" className="scroll-mt-28 lg:scroll-mt-24 space-y-4 pt-6 border-t border-[var(--border)]">
-                <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)" }}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center font-bold"
-                    >
-                      <MessageSquare className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 style={{ color: "var(--navy-900)" }} className="text-sm sm:text-base font-bold">
-                        Phase 3: Technical Interview Defense & Deep Dives
-                      </h3>
-                      <p style={{ color: "var(--text-muted)" }} className="text-[11px] sm:text-xs">
-                        Anticipated architectural probes and battle-tested talking points
-                      </p>
-                    </div>
-                  </div>
-                  {insights?.interview_questions && (
-                    <span
-                      style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)", borderColor: "var(--border)" }}
-                      className="text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 rounded-full border shrink-0"
-                    >
-                      {insights.interview_questions.length} Questions
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-4 w-full min-w-0 max-w-full">
-              {insights?.interview_questions && insights.interview_questions.length > 0 ? (
-                insights.interview_questions.map((q, idx) => {
-                  const isCopied = copiedQuestionKey === idx;
-                  const isExpanded = !!expandedQuestions[idx];
-
-                  return (
-                    <div
-                      key={idx}
-                      style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
-                      className="rounded-[12px] border overflow-hidden shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-shadow w-full min-w-0 max-w-full"
-                    >
-                      {/* Clicking ANYWHERE in this header row toggles open/close */}
-                      <div
-                        onClick={() => toggleQuestionExpanded(idx)}
-                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
-                        className="p-3.5 sm:p-5 flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-3 hover:bg-[var(--navy-50)] transition cursor-pointer select-none border-b"
-                      >
-                        <div className="flex items-start gap-2.5 sm:gap-3 flex-grow min-w-0">
-                          <span
-                            style={{ backgroundColor: "var(--navy-900)", color: "var(--surface)" }}
-                            className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 mt-0.5"
-                          >
-                            {idx + 1}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <span
-                              style={{ backgroundColor: "var(--missing-bg)", borderColor: "var(--missing-border)", color: "var(--missing)" }}
-                              className="inline-block px-2 py-0.5 rounded-md border text-[10px] font-semibold uppercase tracking-wider mb-1.5"
-                            >
-                              ✕ Probing Gap: {q.targeted_skill}
-                            </span>
-                            <h4 style={{ color: "var(--navy-900)" }} className="text-xs sm:text-sm font-semibold leading-snug">
-                              {q.question}
-                            </h4>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between sm:justify-end gap-1.5 shrink-0 self-end sm:self-auto" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => handleCopyQuestion(idx, q)}
-                            style={{
-                              backgroundColor: isCopied ? "var(--strong-bg)" : "var(--teal-600)",
-                              borderColor: isCopied ? "var(--strong-border)" : "transparent",
-                              color: isCopied ? "var(--strong)" : "var(--surface)",
-                            }}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold shadow-xs transition hover:bg-[var(--teal-700)] cursor-pointer"
-                          >
-                            {isCopied ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-[var(--strong)]" />
-                                <span>Copied</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5" />
-                                <span>Copy Q&A</span>
-                              </>
-                            )}
-                          </button>
-                          <button
-                            onClick={() => toggleQuestionExpanded(idx)}
-                            style={{ color: "var(--text-muted)" }}
-                            className="p-1.5 rounded-lg hover:text-[var(--navy-900)] hover:bg-[var(--navy-50)] transition cursor-pointer"
-                            title={isExpanded ? "Collapse" : "Expand"}
-                          >
-                            {isExpanded ? (
-                              <ChevronUp className="w-4 h-4" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
+                          );
+                        })()}
                       </div>
-
-                      {/* Expandable Strategic Talking Points */}
-                      {isExpanded && (
-                        <div
-                          style={{ backgroundColor: "var(--navy-50)", borderColor: "var(--border)" }}
-                          className="p-3.5 sm:p-5 flex items-start gap-2.5 sm:gap-3 border-t"
-                        >
-                          <div
-                            style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-900)" }}
-                            className="w-6 h-6 rounded-md border flex items-center justify-center shrink-0 mt-0.5"
-                          >
-                            <Lightbulb className="w-3.5 h-3.5 text-[var(--navy-700)]" />
-                          </div>
-                          <div className="flex-grow">
-                            <p style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider mb-1">
-                              Strategic Talking Points & Response Framework
-                            </p>
-                            <p style={{ color: "var(--text-primary)" }} className="text-xs sm:text-sm opacity-85 leading-relaxed whitespace-pre-line font-sans">
-                              {q.suggested_talking_points}
-                            </p>
-                          </div>
-                        </div>
-                      )}
                     </div>
-                  );
-                })
-              ) : (
-                <div
-                  style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
-                  className="p-8 rounded-[12px] border text-center text-xs"
-                >
-                  No interview questions generated.
+                  )}
                 </div>
-              )}
-                </div>
-              </section>
+              );
+            })
+          ) : (
+            <div
+              style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
+              className="p-8 rounded-[12px] border text-center text-xs"
+            >
+              No critical missing skill gaps detected.
             </div>
           )}
-        </main>
-      </div>
+        </div>
+      </section>
+
+      {/* PHASE 2: RESUME BULLETS */}
+      <section id="section-bullets" className="scroll-mt-28 lg:scroll-mt-24 space-y-4 pt-6 border-t border-[var(--border)]">
+        <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+          <div className="flex items-center gap-2.5">
+            <div
+              style={{ backgroundColor: "var(--weak-bg)", color: "var(--weak)" }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center font-bold"
+            >
+              <Wand2 className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 style={{ color: "var(--navy-900)" }} className="text-sm sm:text-base font-bold">
+                Phase 2: Resume Bullet Improvements
+              </h3>
+              <p style={{ color: "var(--text-muted)" }} className="text-[11px] sm:text-xs">
+                Quantified XYZ impact rewrites targeting weak skills and experiential bridges
+              </p>
+            </div>
+          </div>
+          {insights?.weak_improvements && (
+            <span
+              style={{ backgroundColor: "var(--weak-bg)", color: "var(--weak)", borderColor: "var(--weak-border)" }}
+              className="text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 rounded-full border shrink-0"
+            >
+              {insights.weak_improvements.length} Rewrites
+            </span>
+          )}
+        </div>
+
+        <div className="space-y-4 w-full min-w-0 max-w-full">
+          {insights?.weak_improvements && insights.weak_improvements.length > 0 ? (
+            insights.weak_improvements.map((item, idx) => (
+              <div
+                key={idx}
+                style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                className="p-4 sm:p-5 rounded-[12px] border shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] space-y-3 transition-shadow w-full min-w-0 max-w-full"
+              >
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span
+                    style={{ backgroundColor: "var(--weak-bg)", color: "var(--weak)", borderColor: "var(--weak-border)" }}
+                    className="px-2.5 py-1 rounded-lg border font-mono text-xs font-bold"
+                  >
+                    ~ {item.skill}
+                  </span>
+                  <span style={{ color: "var(--text-muted)" }} className="text-xs font-medium">XYZ Impact Model</span>
+                </div>
+
+                <div className="space-y-2">
+                  {item.recommended_bullets.map((bullet, bidx) => {
+                    const bulletKey = `${item.skill}-${bidx}`;
+                    const isBulletCopied = copiedBulletKey === bulletKey;
+                    return (
+                      <div
+                        key={bidx}
+                        style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                        className="p-3 sm:p-3.5 rounded-xl border flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-2.5 sm:gap-3 group hover:border-[var(--navy-900)] transition"
+                      >
+                        <div className="flex items-start gap-2.5 flex-grow min-w-0">
+                          <span style={{ color: "var(--navy-700)" }} className="font-bold mt-0.5 shrink-0">•</span>
+                          <p style={{ color: "var(--text-primary)" }} className="text-xs sm:text-sm opacity-90 leading-relaxed font-sans break-words">
+                            {bullet}
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={() => handleCopyBullet(bulletKey, bullet)}
+                          style={{
+                            backgroundColor: isBulletCopied ? "var(--strong-bg)" : "var(--teal-600)",
+                            borderColor: isBulletCopied ? "var(--strong-border)" : "transparent",
+                            color: isBulletCopied ? "var(--strong)" : "var(--surface)",
+                          }}
+                          className="self-end sm:self-auto flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold shadow-xs transition hover:bg-[var(--teal-700)] cursor-pointer shrink-0"
+                        >
+                          {isBulletCopied ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-[var(--strong)]" />
+                              <span>Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div
+              style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
+              className="p-8 rounded-[12px] border text-center text-xs"
+            >
+              No weak bullet improvements needed.
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* PHASE 3: INTERVIEW DEFENSE */}
+      <section id="section-interview" className="scroll-mt-28 lg:scroll-mt-24 space-y-4 pt-6 border-t border-[var(--border)]">
+        <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+          <div className="flex items-center gap-2.5">
+            <div
+              style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)" }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center font-bold"
+            >
+              <MessageSquare className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 style={{ color: "var(--navy-900)" }} className="text-sm sm:text-base font-bold">
+                Phase 3: Technical Interview Defense & Deep Dives
+              </h3>
+              <p style={{ color: "var(--text-muted)" }} className="text-[11px] sm:text-xs">
+                Anticipated architectural probes and battle-tested talking points
+              </p>
+            </div>
+          </div>
+          {insights?.interview_questions && (
+            <span
+              style={{ backgroundColor: "var(--navy-50)", color: "var(--navy-900)", borderColor: "var(--border)" }}
+              className="text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 rounded-full border shrink-0"
+            >
+              {insights.interview_questions.length} Questions
+            </span>
+          )}
+        </div>
+
+        <div className="space-y-4 w-full min-w-0 max-w-full">
+          {insights?.interview_questions && insights.interview_questions.length > 0 ? (
+            insights.interview_questions.map((q, idx) => {
+              const isCopied = copiedQuestionKey === idx;
+              const isExpanded = !!expandedQuestions[idx];
+
+              return (
+                <div
+                  key={idx}
+                  style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                  className="rounded-[12px] border overflow-hidden shadow-[0_1px_3px_rgba(15,31,61,0.08)] hover:shadow-[0_4px_12px_rgba(15,31,61,0.12)] transition-shadow w-full min-w-0 max-w-full"
+                >
+                  {/* Clicking ANYWHERE in this header row toggles open/close */}
+                  <div
+                    onClick={() => toggleQuestionExpanded(idx)}
+                    style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                    className="p-3.5 sm:p-5 flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-3 hover:bg-[var(--navy-50)] transition cursor-pointer select-none border-b"
+                  >
+                    <div className="flex items-start gap-2.5 sm:gap-3 flex-grow min-w-0">
+                      <span
+                        style={{ backgroundColor: "var(--navy-900)", color: "var(--surface)" }}
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 mt-0.5"
+                      >
+                        {idx + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <span
+                          style={{ backgroundColor: "var(--missing-bg)", borderColor: "var(--missing-border)", color: "var(--missing)" }}
+                          className="inline-block px-2 py-0.5 rounded-md border text-[10px] font-semibold uppercase tracking-wider mb-1.5"
+                        >
+                          ✕ Probing Gap: {q.targeted_skill}
+                        </span>
+                        <h4 style={{ color: "var(--navy-900)" }} className="text-xs sm:text-sm font-semibold leading-snug">
+                          {q.question}
+                        </h4>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between sm:justify-end gap-1.5 shrink-0 self-end sm:self-auto" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => handleCopyQuestion(idx, q)}
+                        style={{
+                          backgroundColor: isCopied ? "var(--strong-bg)" : "var(--teal-600)",
+                          borderColor: isCopied ? "var(--strong-border)" : "transparent",
+                          color: isCopied ? "var(--strong)" : "var(--surface)",
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold shadow-xs transition hover:bg-[var(--teal-700)] cursor-pointer"
+                      >
+                        {isCopied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-[var(--strong)]" />
+                            <span>Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy Q&A</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => toggleQuestionExpanded(idx)}
+                        style={{ color: "var(--text-muted)" }}
+                        className="p-1.5 rounded-lg hover:text-[var(--navy-900)] hover:bg-[var(--navy-50)] transition cursor-pointer"
+                        title={isExpanded ? "Collapse" : "Expand"}
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Expandable Strategic Talking Points */}
+                  {isExpanded && (
+                    <div
+                      style={{ backgroundColor: "var(--navy-50)", borderColor: "var(--border)" }}
+                      className="p-3.5 sm:p-5 flex items-start gap-2.5 sm:gap-3 border-t"
+                    >
+                      <div
+                        style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--navy-900)" }}
+                        className="w-6 h-6 rounded-md border flex items-center justify-center shrink-0 mt-0.5"
+                      >
+                        <Lightbulb className="w-3.5 h-3.5 text-[var(--navy-700)]" />
+                      </div>
+                      <div className="flex-grow">
+                        <p style={{ color: "var(--navy-900)" }} className="text-xs font-bold uppercase tracking-wider mb-1">
+                          Strategic Talking Points & Response Framework
+                        </p>
+                        <p style={{ color: "var(--text-primary)" }} className="text-xs sm:text-sm opacity-85 leading-relaxed whitespace-pre-line font-sans">
+                          {q.suggested_talking_points}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div
+              style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-muted)" }}
+              className="p-8 rounded-[12px] border text-center text-xs"
+            >
+              No interview questions generated.
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  )}
+</main>
+</div>
 
       {/* Audit History Slide-Over Drawer */}
       {isHistoryOpen && (
@@ -3334,6 +3433,18 @@ export default function ResumeGapAnalyzerPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Floating Back to Top Button */}
+      {showScrollTop && (
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          className="fixed bottom-6 right-6 z-50 p-3.5 rounded-full bg-teal-600 hover:bg-teal-500 text-white shadow-[0_4px_20px_rgba(13,148,136,0.6)] border border-teal-400/40 transition-all duration-300 cursor-pointer transform hover:scale-110 active:scale-95 flex items-center justify-center group"
+          title="Back to Top"
+        >
+          <ChevronUp className="w-6 h-6 text-white group-hover:-translate-y-0.5 transition-transform stroke-[2.5]" />
+        </button>
       )}
     </div>
   );

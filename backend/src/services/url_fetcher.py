@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 import httpx
 from pydantic import BaseModel, Field
 
-from src.llm import execute_llm_with_fallback
+from src.core.llm import execute_llm_with_fallback
 
 
 class JobUrlParsedResult(BaseModel):
@@ -44,10 +44,10 @@ class JobUrlLLMSchema(BaseModel):
     company_context_bullets: list[str] = Field(
         description=(
             "2 to 3 concise bullet points strictly on the company itself: "
-            "(1) Domain & Industry: what the company builds or market focus. "
-            "(2) Tech Stack & Infra: key cloud/platforms/architectural foundation. "
-            "(3) Engineering Priority: scale, security, compliance, or speed. "
-            "CRITICAL: Do NOT copy or repeat the job requirements or role overview here!"
+            "(1) Domain & Industry: what the company does, their clients or market sector. "
+            "(2) Tech Stack & Infrastructure: core platforms, cloud environments, or architecture they run. "
+            "(3) Engineering Priority: scale, security, compliance, or core engineering ethos. "
+            "CRITICAL: Do NOT copy or repeat the job requirements, duties, or role overview here!"
         )
     )
     job_description_clean: str = Field(
@@ -121,7 +121,7 @@ async def fetch_and_analyze_job_url(raw_url: str) -> JobUrlParsedResult:
     try:
         async with httpx.AsyncClient(
             headers=headers,
-            timeout=15.0,
+            timeout=4.0,
             follow_redirects=True,
             verify=False,
         ) as client:

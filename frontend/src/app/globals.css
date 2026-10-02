@@ -59,6 +59,44 @@ body {
 }
 
 /* ========================================================================= */
+/* UNIVERSAL THEMED CUSTOM SCROLLBAR                                          */
+/* ========================================================================= */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #CBD5E1 transparent;
+}
+
+*:hover {
+  scrollbar-color: #0D9488 transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #CBD5E1;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #0D9488;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ========================================================================= */
 /* THEME UTILITIES: NAVY + TEAL DESIGN SYSTEM                                */
 /* ========================================================================= */
 
@@ -248,4 +286,116 @@ button[data-nextjs-dev-indicator] {
   clip: rect(0, 0, 0, 0) !important;
   width: 0 !important;
   height: 0 !important;
+}
+
+/* ========================================================================= */
+/* CLERK AUTHENTICATION OVERRIDES FOR DELTA LIGHT THEME                       */
+/* ========================================================================= */
+.cl-rootBox, .cl-cardBox, .cl-card, .cl-modalContent {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E8F0 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01) !important;
+  border-radius: 1rem !important;
+  color: #0F172A !important;
+}
+
+.cl-headerTitle, .cl-formHeaderTitle, [class*="cl-headerTitle"], [class*="cl-formHeaderTitle"] {
+  color: #0F172A !important;
+  font-weight: 800 !important;
+  font-size: 1.25rem !important;
+}
+
+.cl-headerSubtitle, .cl-formHeaderSubtitle, .cl-dividerText, .cl-formFieldHintText, .cl-footerActionText, .cl-identityPreviewText, [class*="headerSubtitle"], [class*="footerActionText"] {
+  color: #64748B !important;
+}
+
+.cl-formFieldLabel, [class*="formFieldLabel"] {
+  color: #334155 !important;
+  font-weight: 700 !important;
+  font-size: 0.8125rem !important;
+}
+
+.cl-formFieldInput, [class*="formFieldInput"] {
+  background-color: #F8FAFC !important;
+  color: #0F172A !important;
+  border: 1px solid #CBD5E1 !important;
+}
+
+.cl-formFieldInput:focus, [class*="formFieldInput"]:focus {
+  background-color: #FFFFFF !important;
+  border-color: #0D9488 !important;
+  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2) !important;
+}
+
+.cl-socialButtonsBlockButton, [class*="socialButtonsBlockButton"] {
+  background-color: #F8FAFC !important;
+  border: 1px solid #E2E8F0 !important;
+  color: #0F172A !important;
+}
+
+.cl-socialButtonsBlockButton:hover, [class*="socialButtonsBlockButton"]:hover {
+  background-color: #F1F5F9 !important;
+  border-color: #CBD5E1 !important;
+}
+
+.cl-socialButtonsBlockButtonText, [class*="socialButtonsBlockButtonText"] {
+  color: #0F172A !important;
+  font-weight: 700 !important;
+}
+
+.cl-formButtonPrimary, [class*="formButtonPrimary"] {
+  background-color: #0D9488 !important;
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 14px rgba(13, 148, 136, 0.3) !important;
+}
+
+.cl-formButtonPrimary:hover, [class*="formButtonPrimary"]:hover {
+  background-color: #0F766E !important;
+}
+
+.cl-footerActionLink, [class*="footerActionLink"] {
+  color: #0D9488 !important;
+  font-weight: 700 !important;
+}
+
+.cl-footerActionLink:hover, [class*="footerActionLink"]:hover {
+  color: #0F766E !important;
+}
+
+.cl-userButtonPopoverCard, .cl-userButtonPopoverMain {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E8F0 !important;
+  color: #0F172A !important;
+}
+
+.cl-userButtonPopoverActionButton, .cl-userButtonPopoverActionButtonText, .cl-userButtonPopoverFooter {
+  color: #334155 !important;
+}
+
+.cl-userButtonPopoverActionButton:hover {
+  background-color: #F8FAFC !important;
+}
+
+.cl-identityPreviewEditButtonIcon, .cl-formFieldInputShowPasswordIcon {
+  color: #64748B !important;
+}
+
+/* ========================================================================= */
+/* HIDE CLERK DEVELOPMENT MODE BANNER & INTERNAL FOOTER TEXT                */
+/* ========================================================================= */
+.cl-internal-150iv7y,
+.cl-internal-1fca71a,
+.cl-internal-b3fm6y,
+.cl-internal-dev-mode,
+.cl-devMode,
+[class*="devMode"],
+[class*="securedBy"],
+.cl-footerActionLink + span {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  width: 0 !important;
+  overflow: hidden !important;
 }

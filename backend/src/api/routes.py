@@ -7,9 +7,9 @@ from pydantic import BaseModel
 from langgraph.types import Command
 import pypdf
 
-from src.state import AgentState, GapAnalysisResult, InputState, Tier1Insights
-from src.url_fetcher import fetch_and_analyze_job_url, JobUrlParsedResult
-from src.workflow import build_gap_analyzer_graph
+from src.core.state import AgentState, GapAnalysisResult, Tier1Insights
+from src.services.url_fetcher import fetch_and_analyze_job_url, JobUrlParsedResult
+from src.core.workflow import build_gap_analyzer_graph
 
 app = FastAPI(
     title="Resume Gap Analyzer Agent",
@@ -161,9 +161,3 @@ def resume_analysis(payload: ResumeRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Resume failed: {str(e)}")
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run("src.api:app", host="127.0.0.1", port=8000, reload=True)

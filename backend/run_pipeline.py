@@ -1,7 +1,7 @@
 import uuid
 from langgraph.types import Command
-from src.state import AgentState
-from src.workflow import build_gap_analyzer_graph
+from src.core.state import AgentState
+from src.core.workflow import build_gap_analyzer_graph
 
 
 def main():
@@ -22,7 +22,7 @@ def main():
     """
 
     sample_resume = """
-    Candidate: Krena Patel
+    Candidate: Alex Morgan
     Professional Summary:
     Full Stack & AI Engineer with 4 years building intelligent applications.
     Key Achievements:

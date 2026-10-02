@@ -1,22 +1,37 @@
-# Virtual Environment
+# Backend Virtual Environments
+backend/.venv/
+backend/venv/
+.venv/
 venv/
 ENV/
 env/
 
-# Python cache
+# Python Cache & Compiled Files
+backend/__pycache__/
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Environment variables / Secrets
+# Environment Variables & Secrets
+backend/.env
+frontend/.env.local
 .env
 
-# Data & Output files
-scouted_jobs.json
-*.log
+# Frontend Dependencies & Build Output
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/tsconfig.tsbuildinfo
+node_modules/
 
-# Playwright & OS files
-.playwright/
+# Logs, Data & Databases
+*.log
+scouted_jobs.json
+*.db
+
+# OS & Editor Files
 .DS_Store
 Thumbs.db
-*.db
+.idea/
+.vscode/

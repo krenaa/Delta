@@ -8,7 +8,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import interrupt
 
-from src.state import (
+from src.core.state import (
     AgentState,
     GapAnalysisResult,
     InterviewQuestion,
@@ -16,8 +16,8 @@ from src.state import (
     Tier1Insights,
     WeakImprovement,
 )
-from src.llm import execute_llm_with_fallback
-from src.insights_kb import get_missing_skill_roadmap, get_skill_knowledge
+from src.core.llm import execute_llm_with_fallback
+from src.services.insights_kb import get_missing_skill_roadmap, get_skill_knowledge
 
 load_dotenv()
 
@@ -383,8 +383,8 @@ def build_gap_analyzer_graph(checkpointer=None):
     builder.add_node("generate_insights_node", generate_insights_node)
 
     builder.add_edge(START, "extract_jd_node")
-    builder.add_edge("extract_jd_node", "extract_resume_node")
-    builder.add_edge("extract_resume_node", "compare_node")
+    builder.add_edge(START, "extract_resume_node")
+    builder.add_edge(["extract_jd_node", "extract_resume_node"], "compare_node")
     builder.add_edge("compare_node", "hitl_review_node")
     builder.add_edge("hitl_review_node", "finalize_node")
     builder.add_edge("finalize_node", "generate_insights_node")
