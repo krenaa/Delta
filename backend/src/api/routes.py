@@ -29,6 +29,12 @@ app.add_middleware(
 graph = build_gap_analyzer_graph()
 
 
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
+
+
+
 class FetchUrlRequest(BaseModel):
     url: str
 
