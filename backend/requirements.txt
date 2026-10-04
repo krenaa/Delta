@@ -113,3 +113,5 @@ zstandard==0.25.0
 langgraph-checkpoint-postgres
 psycopg-pool
 gunicorn
+
+pypdf
