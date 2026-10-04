@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSignUp } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -19,21 +19,40 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  // Auto-clear loading error once Clerk SDK finishes initializing
+  useEffect(() => {
+    if (isLoaded && error === "Authentication service is loading. Please wait a moment...") {
+      setError(null);
+    }
+  }, [isLoaded, error]);
+
   // Google OAuth Sign Up
   const handleGoogleSignUp = async () => {
-    if (!isLoaded) {
-      setError("Authentication service is loading. Please wait a moment...");
-      return;
-    }
-    if (!signUp) {
-      setError("Sign up service unavailable. Please refresh the page.");
-      return;
-    }
+    setError(null);
+    setGoogleLoading(true);
 
     try {
-      setGoogleLoading(true);
-      setError(null);
-      await signUp.authenticateWithRedirect({
+      let currentSignUp = signUp;
+      let loaded = isLoaded;
+
+      // If Clerk SDK is still initializing, wait up to 4 seconds
+      if (!loaded || !currentSignUp) {
+        let attempts = 0;
+        while ((!loaded || !currentSignUp) && attempts < 20) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          attempts++;
+          loaded = clerkSignUp?.isLoaded;
+          currentSignUp = clerkSignUp?.signUp;
+        }
+      }
+
+      if (!currentSignUp) {
+        setError("Sign up service unavailable. Please refresh the page.");
+        setGoogleLoading(false);
+        return;
+      }
+
+      await currentSignUp.authenticateWithRedirect({
         strategy: "oauth_google",
         redirectUrl: "/sso-callback",
         redirectUrlComplete: "/",
