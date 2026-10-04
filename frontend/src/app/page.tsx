@@ -121,7 +121,7 @@ Role & Responsibilities:
 - Design relational schemas in PostgreSQL and configure Redis caching layers.
 - Implement structured outputs, RAG pipelines, and LLM evaluation benchmarks.`;
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://delta-et1v.onrender.com";
 
 const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
   const url = endpoint.startsWith("http")
