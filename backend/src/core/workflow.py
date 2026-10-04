@@ -371,8 +371,23 @@ def generate_insights_node(state: AgentState) -> dict:
     return {"insights": insights}
 
 
+def get_default_checkpointer():
+    """Returns PostgresSaver if DATABASE_URL is configured, otherwise MemorySaver."""
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        try:
+            from langgraph.checkpoint.postgres import PostgresSaver
+            saver = PostgresSaver.from_conn_string(db_url)
+            saver.setup()
+            print("[INFO] Successfully initialized Supabase PostgreSQL checkpointer.")
+            return saver
+        except Exception as e:
+            print(f"[WARN] Failed to initialize Postgres checkpointer ({e}). Falling back to MemorySaver.")
+    return MemorySaver()
+
+
 def build_gap_analyzer_graph(checkpointer=None):
-    """Constructs the Phase B/C/Tier-1 LangGraph state machine with MemorySaver."""
+    """Constructs the Phase B/C/Tier-1 LangGraph state machine with MemorySaver or PostgresSaver."""
     builder = StateGraph(AgentState)
 
     builder.add_node("extract_jd_node", extract_jd_node)
@@ -391,6 +406,7 @@ def build_gap_analyzer_graph(checkpointer=None):
     builder.add_edge("generate_insights_node", END)
 
     if checkpointer is None:
-        checkpointer = MemorySaver()
+        checkpointer = get_default_checkpointer()
 
     return builder.compile(checkpointer=checkpointer)
+
