@@ -733,8 +733,7 @@ export default function ResumeGapAnalyzerPage() {
 
   const checkAuthForPdfUpload = (): boolean => {
     if (!isSignedIn) {
-      setError("Please sign in first to upload your PDF resume and analyze skill gaps.");
-      router.push("/sign-in");
+      router.push("/sign-in?reason=pdf_upload");
       return false;
     }
     return true;

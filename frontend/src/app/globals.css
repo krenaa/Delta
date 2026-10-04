@@ -59,41 +59,28 @@ body {
 }
 
 /* ========================================================================= */
-/* UNIVERSAL THEMED CUSTOM SCROLLBAR                                          */
+/* INVISIBLE SCROLLBAR                                                       */
 /* ========================================================================= */
 * {
-  scrollbar-width: thin;
-  scrollbar-color: #CBD5E1 transparent;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
-*:hover {
-  scrollbar-color: #0D9488 transparent;
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+*::-webkit-scrollbar-thumb {
+  display: none !important;
+  background: transparent !important;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 9999px;
-}
-
-::-webkit-scrollbar-thumb {
-  background-color: #CBD5E1;
-  border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-  transition: background-color 0.2s ease;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background-color: #0D9488;
-}
-
-::-webkit-scrollbar-corner {
-  background: transparent;
+*::-webkit-scrollbar-track {
+  display: none !important;
+  background: transparent !important;
 }
 
 /* ========================================================================= */
