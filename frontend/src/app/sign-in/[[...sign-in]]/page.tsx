@@ -209,9 +209,7 @@ function SignInContent() {
         </Link>
 
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-teal-600 flex items-center justify-center shadow-md shadow-teal-600/20 font-mono text-white text-base font-black">
-            Δ
-          </div>
+          <img src="/icon.svg" alt="Delta Logo" className="w-8 h-8 rounded-lg shadow-sm shrink-0 object-contain" />
           <span className="text-base font-extrabold tracking-tight text-slate-900">Delta</span>
         </div>
       </header>

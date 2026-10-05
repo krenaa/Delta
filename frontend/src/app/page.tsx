@@ -1240,17 +1240,12 @@ export default function ResumeGapAnalyzerPage() {
       >
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 sm:py-3 flex flex-row items-center justify-between gap-2 sm:gap-4 w-full min-w-0">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {/* Bold Teal Logo Box with Image Logo */}
-            <div
-              style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl overflow-hidden flex items-center justify-center shadow-xs font-black text-sm sm:text-lg select-none shrink-0"
-            >
-              <img
-                src="/logo.png"
-                alt="Delta"
-                className="w-full h-full object-cover"
-              />
-            </div>
+            {/* Delta Branding Logo Icon */}
+            <img
+              src="/icon.svg"
+              alt="Delta Logo"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl shadow-xs select-none shrink-0 object-contain"
+            />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <h1 style={{ color: "var(--navy-900)" }} className="text-sm sm:text-lg font-bold tracking-tight">
