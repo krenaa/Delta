@@ -10,7 +10,7 @@ import jwt
 
 from src.core.state import AgentState, GapAnalysisResult, Tier1Insights
 from src.services.url_fetcher import fetch_and_analyze_job_url, JobUrlParsedResult
-from src.core.workflow import build_gap_analyzer_graph
+from src.core.workflow import build_gap_analyzer_graph, finalize_node, generate_insights_node
 
 app = FastAPI(
     title="Resume Gap Analyzer Agent",
@@ -194,5 +194,40 @@ def resume_analysis(
             final_output=final_result.get("final_output"),
             insights=final_result.get("insights"),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Resume failed: {str(e)}")
+    except Exception:
+        # Fallback for re-generation or when thread is already finalized:
+        # Extract snapshot state and execute finalize & insights directly
+        old_state = {}
+        try:
+            snapshot = graph.get_state(config)
+            if snapshot and snapshot.values:
+                old_state = dict(snapshot.values)
+        except Exception:
+            pass
+
+        new_thread_id = str(uuid.uuid4())
+        updated_state: AgentState = {
+            "jd_text": old_state.get("jd_text", ""),
+            "resume_text": old_state.get("resume_text", ""),
+            "company_name": old_state.get("company_name", ""),
+            "company_context": old_state.get("company_context", ""),
+            "extracted_jd_skills": old_state.get("extracted_jd_skills", []),
+            "extracted_candidate_skills": old_state.get("extracted_candidate_skills", []),
+            "gap_analysis": old_state.get("gap_analysis"),
+            "user_feedback": payload.user_feedback or "",
+            "final_output": None,
+            "insights": None,
+        }
+
+        fin_state = finalize_node(updated_state)
+        updated_state.update(fin_state)
+        ins_state = generate_insights_node(updated_state)
+        updated_state.update(ins_state)
+
+        return FinalResponse(
+            thread_id=new_thread_id,
+            status="FINALIZED",
+            user_id=user_id,
+            final_output=updated_state.get("final_output"),
+            insights=updated_state.get("insights"),
+        )

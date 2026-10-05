@@ -906,6 +906,9 @@ export default function ResumeGapAnalyzerPage() {
       });
 
       const data: FinalResponse = await response.json();
+      if (data.thread_id) {
+        setThreadId(data.thread_id);
+      }
       setFinalOutput(data.final_output);
       if (data.insights) {
         setInsights(data.insights);
