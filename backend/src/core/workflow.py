@@ -207,21 +207,49 @@ def finalize_node(state: AgentState) -> dict:
     weak = list(gap.weak)
     strong = list(gap.strong)
 
-    if user_feedback and isinstance(user_feedback, str):
-        feedback_lower = user_feedback.lower()
-        for skill in list(missing + weak):
-            if "to strong" in feedback_lower and skill.lower() in feedback_lower:
-                if skill in missing:
+    if user_feedback and isinstance(user_feedback, str) and user_feedback.strip():
+        try:
+            import json
+            parsed = json.loads(user_feedback)
+            if isinstance(parsed, dict):
+                if "missing" in parsed and isinstance(parsed["missing"], list):
+                    missing = [str(s) for s in parsed["missing"]]
+                if "weak" in parsed and isinstance(parsed["weak"], list):
+                    weak = [str(s) for s in parsed["weak"]]
+                if "strong" in parsed and isinstance(parsed["strong"], list):
+                    strong = [str(s) for s in parsed["strong"]]
+                
+                text_adj = parsed.get("user_adjustment") or parsed.get("feedback")
+                if text_adj and isinstance(text_adj, str) and text_adj.strip():
+                    feedback_lower = text_adj.lower()
+                    for skill in list(missing + weak):
+                        if "to strong" in feedback_lower and skill.lower() in feedback_lower:
+                            if skill in missing:
+                                missing.remove(skill)
+                            if skill in weak:
+                                weak.remove(skill)
+                            if skill not in strong:
+                                strong.append(skill)
+                        elif "to weak" in feedback_lower and skill.lower() in feedback_lower:
+                            if skill in missing:
+                                missing.remove(skill)
+                            if skill not in weak:
+                                weak.append(skill)
+        except Exception:
+            feedback_lower = user_feedback.lower()
+            for skill in list(missing + weak):
+                if "to strong" in feedback_lower and skill.lower() in feedback_lower:
+                    if skill in missing:
+                        missing.remove(skill)
+                    if skill in weak:
+                        weak.remove(skill)
+                    if skill not in strong:
+                        strong.append(skill)
+            for skill in list(missing):
+                if "to weak" in feedback_lower and skill.lower() in feedback_lower:
                     missing.remove(skill)
-                if skill in weak:
-                    weak.remove(skill)
-                if skill not in strong:
-                    strong.append(skill)
-        for skill in list(missing):
-            if "to weak" in feedback_lower and skill.lower() in feedback_lower:
-                missing.remove(skill)
-                if skill not in weak:
-                    weak.append(skill)
+                    if skill not in weak:
+                        weak.append(skill)
 
     final_result = GapAnalysisResult(
         missing=missing,

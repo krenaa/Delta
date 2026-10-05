@@ -1,31 +1,31 @@
 @import "tailwindcss";
 
 @theme {
-  --color-navy-900: #0F1F3D;
-  --color-navy-700: #1E3A5F;
-  --color-navy-50: #EEF2F8;
+  --color-navy-900: #0F766E;
+  --color-navy-700: #0D5F59;
+  --color-navy-50: #F0FDFA;
   --color-teal-600: #0F766E;
   --color-teal-700: #0D5F59;
-  --color-bg: #F4F6FA;
+  --color-bg: #F8FAFC;
   --color-surface: #FFFFFF;
   --color-border: #E2E8F0;
-  --color-text-primary: #0F1F3D;
+  --color-text-primary: #0F2926;
   --color-text-muted: #475569;
-  --color-accent: #F59E0B;
+  --color-accent: #0D9488;
 }
 
 :root {
-  --navy-900: #0F1F3D;   /* structure: logo, headings, active nav */
-  --navy-700: #1E3A5F;   /* hover states on navy elements */
-  --navy-50:  #EEF2F8;   /* light navy tint for hover/selected backgrounds */
-  --teal-600: #0F766E;   /* action: primary buttons, interactive elements only */
-  --teal-700: #0D5F59;   /* teal hover */
-  --bg: #F4F6FA;         /* page background, cool off-white */
-  --surface: #FFFFFF;    /* cards */
+  --navy-900: #0F766E;   /* Deep Teal for structure: logo, active nav, primary headers */
+  --navy-700: #0D5F59;   /* Hover state on dark teal elements */
+  --navy-50:  #F0FDFA;   /* Soft light teal background for selected elements */
+  --teal-600: #0F766E;   /* Action teal */
+  --teal-700: #0D5F59;   /* Action teal hover */
+  --bg: #F8FAFC;         /* Page background */
+  --surface: #FFFFFF;    /* Clean white surface */
   --border: #E2E8F0;
-  --text-primary: #0F1F3D;
-  --text-muted: #475569; /* darker than current, must be readable */
-  --accent: #F59E0B;     /* amber, small highlights only */
+  --text-primary: #0F2926; /* Deep dark teal-gray for clean readable text */
+  --text-muted: #475569;   /* Muted text */
+  --accent: #0D9488;     /* Accent teal */
 
   /* Semantic gap analysis tokens (softened) */
   --missing: #DC2626;
@@ -34,17 +34,17 @@
   --weak: #D97706;
   --weak-bg: #FFFBEB;
   --weak-border: #FDE68A;
-  --strong: #16A34A;
-  --strong-bg: #F0FDF4;
-  --strong-border: #BBF7D0;
+  --strong: #0D9488;
+  --strong-bg: #F0FDFA;
+  --strong-border: #99F6E4;
 
   /* Target Role Badge Tokens */
-  --role-bg: #FEF3C7;
-  --role-text: #92400E;
-  --role-border: #FDE68A;
+  --role-bg: #CCFBF1;
+  --role-text: #115E59;
+  --role-border: #99F6E4;
 
-  --card-shadow: 0 1px 3px rgba(15, 31, 61, 0.08);
-  --card-shadow-hover: 0 4px 12px rgba(15, 31, 61, 0.12);
+  --card-shadow: 0 1px 3px rgba(15, 118, 110, 0.06);
+  --card-shadow-hover: 0 4px 12px rgba(15, 118, 110, 0.12);
 }
 
 html,

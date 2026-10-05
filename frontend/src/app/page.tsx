@@ -52,7 +52,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useUser, SignInButton, UserButton } from "@clerk/nextjs";
+import { useUser, useAuth, SignInButton, UserButton } from "@clerk/nextjs";
 import dynamic from "next/dynamic";
 const ResumePdfViewer = dynamic(() => import("@/components/ResumePdfViewer"), {
   ssr: false,
@@ -166,7 +166,27 @@ type ActiveSection = "sources" | "review" | "roadmap" | "bullets" | "interview";
 
 export default function ResumeGapAnalyzerPage() {
   const { user, isSignedIn, isLoaded } = useUser();
+  const { getToken } = useAuth();
   const router = useRouter();
+
+  const authenticatedApiFetch = async (endpoint: string, options: RequestInit = {}) => {
+    const headers = new Headers(options.headers || {});
+    if (isSignedIn) {
+      try {
+        const token = await getToken();
+        if (token) {
+          headers.set("Authorization", `Bearer ${token}`);
+        }
+      } catch (e) {
+        console.warn("Could not retrieve Clerk JWT token:", e);
+      }
+    }
+    return apiFetch(endpoint, {
+      ...options,
+      headers,
+    });
+  };
+
   const [activeSection, setActiveSection] = useState<ActiveSection>("sources");
 
   // Clean slate default inputs (empty strings)
@@ -672,7 +692,7 @@ export default function ResumeGapAnalyzerPage() {
     setUrlFetchSuccessMsg(null);
 
     try {
-      const response = await apiFetch("/api/fetch-url", {
+      const response = await authenticatedApiFetch("/api/fetch-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: targetUrl }),
@@ -762,7 +782,7 @@ export default function ResumeGapAnalyzerPage() {
     formData.append("file", file);
 
     try {
-      const response = await apiFetch("/api/upload-resume", {
+      const response = await authenticatedApiFetch("/api/upload-resume", {
         method: "POST",
         body: formData,
       });
@@ -806,7 +826,7 @@ export default function ResumeGapAnalyzerPage() {
     setInsights(null);
 
     try {
-      const response = await apiFetch("/api/analyze", {
+      const response = await authenticatedApiFetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -855,7 +875,7 @@ export default function ResumeGapAnalyzerPage() {
 
       // If thread_id is missing (e.g. reopened history item or clear state), initialize analysis first dynamically
       if (!currentThreadId) {
-        const initRes = await apiFetch("/api/analyze", {
+        const initRes = await authenticatedApiFetch("/api/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -876,7 +896,7 @@ export default function ResumeGapAnalyzerPage() {
       const feedbackToSend =
         customAdjustment !== undefined ? customAdjustment : userAdjustment;
 
-      const response = await apiFetch("/api/resume", {
+      const response = await authenticatedApiFetch("/api/resume", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1220,12 +1240,16 @@ export default function ResumeGapAnalyzerPage() {
       >
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 sm:py-3 flex flex-row items-center justify-between gap-2 sm:gap-4 w-full min-w-0">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {/* Bold Navy Logo Box with White Icon */}
+            {/* Bold Teal Logo Box with Image Logo */}
             <div
-              style={{ backgroundColor: "var(--navy-900)", color: "var(--surface)" }}
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shadow-xs font-black text-sm sm:text-lg select-none shrink-0"
+              style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl overflow-hidden flex items-center justify-center shadow-xs font-black text-sm sm:text-lg select-none shrink-0"
             >
-              Δ
+              <img
+                src="/logo.png"
+                alt="Delta"
+                className="w-full h-full object-cover"
+              />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2">
@@ -2487,23 +2511,22 @@ export default function ResumeGapAnalyzerPage() {
                 />
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-2">
+              {/* Single Primary Action Button */}
+              <div className="flex items-center justify-end pt-2">
                 <button
                   type="button"
-                  onClick={() => handleResumeAnalysis("")}
-                  disabled={loading}
-                  style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
-                  className="w-full sm:w-auto px-6 py-3 rounded-xl border text-xs sm:text-sm font-semibold tracking-wide transition cursor-pointer hover:bg-[var(--navy-50)]"
-                >
-                  Approve As Is
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleResumeAnalysis()}
+                  onClick={() => {
+                    const payload = JSON.stringify({
+                      missing: hitlReview?.missing || [],
+                      weak: hitlReview?.weak || [],
+                      strong: hitlReview?.strong || [],
+                      user_adjustment: userAdjustment || "",
+                    });
+                    handleResumeAnalysis(payload);
+                  }}
                   disabled={loading}
                   style={{ backgroundColor: "var(--teal-600)", color: "var(--surface)" }}
-                  className="w-full sm:w-auto flex items-center justify-center gap-2.5 px-7 py-3 rounded-xl text-xs sm:text-sm font-bold shadow-md transition hover:bg-[var(--teal-700)] cursor-pointer disabled:opacity-50"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-xl text-xs sm:text-sm font-bold shadow-md transition hover:bg-[var(--teal-700)] cursor-pointer disabled:opacity-50"
                 >
                   {loading ? (
                     <>

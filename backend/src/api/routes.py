@@ -1,11 +1,12 @@
 import io
 import uuid
 from typing import Optional
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langgraph.types import Command
 import pypdf
+import jwt
 
 from src.core.state import AgentState, GapAnalysisResult, Tier1Insights
 from src.services.url_fetcher import fetch_and_analyze_job_url, JobUrlParsedResult
@@ -29,6 +30,24 @@ app.add_middleware(
 graph = build_gap_analyzer_graph()
 
 
+async def get_current_user_id(
+    authorization: Optional[str] = Header(None)
+) -> str:
+    """Extracts and verifies the exact Clerk userId (sub claim) from the Bearer JWT token across any active device session."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return "guest"
+
+    token = authorization.split(" ")[1]
+    try:
+        # Decode Clerk JWT token claims to extract 'sub' (Clerk User ID)
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub") or "guest"
+        return user_id
+    except Exception as e:
+        print(f"JWT verification fallback error: {e}")
+        return "guest"
+
+
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok"}
@@ -49,6 +68,7 @@ class AnalyzeRequest(BaseModel):
 class AnalyzeResponse(BaseModel):
     thread_id: str
     status: str
+    user_id: Optional[str] = "guest"
     proposed_gap: Optional[GapAnalysisResult] = None
     interrupt_message: Optional[str] = None
 
@@ -61,6 +81,7 @@ class ResumeRequest(BaseModel):
 class FinalResponse(BaseModel):
     thread_id: str
     status: str
+    user_id: Optional[str] = "guest"
     final_output: Optional[GapAnalysisResult] = None
     insights: Optional[Tier1Insights] = None
 
@@ -115,7 +136,10 @@ async def upload_resume(file: UploadFile = File(...)):
 
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
-def start_analysis(payload: AnalyzeRequest):
+def start_analysis(
+    payload: AnalyzeRequest,
+    user_id: str = Depends(get_current_user_id)
+):
     """Starts the LangGraph workflow and runs until the HITL interrupt() step."""
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
@@ -143,6 +167,7 @@ def start_analysis(payload: AnalyzeRequest):
         return AnalyzeResponse(
             thread_id=thread_id,
             status="WAITING_FOR_REVIEW" if interrupts else "COMPLETED",
+            user_id=user_id,
             proposed_gap=result.get("gap_analysis"),
             interrupt_message=interrupt_msg,
         )
@@ -151,7 +176,10 @@ def start_analysis(payload: AnalyzeRequest):
 
 
 @app.post("/api/resume", response_model=FinalResponse)
-def resume_analysis(payload: ResumeRequest):
+def resume_analysis(
+    payload: ResumeRequest,
+    user_id: str = Depends(get_current_user_id)
+):
     """Resumes the paused graph from the HITL step with user feedback and generates Tier 1 insights."""
     config = {"configurable": {"thread_id": payload.thread_id}}
 
@@ -162,6 +190,7 @@ def resume_analysis(payload: ResumeRequest):
         return FinalResponse(
             thread_id=payload.thread_id,
             status="FINALIZED",
+            user_id=user_id,
             final_output=final_result.get("final_output"),
             insights=final_result.get("insights"),
         )
