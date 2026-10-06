@@ -24,6 +24,10 @@
 | :---: | :---: |
 | ![Interview Defense](frontend/public/screenshots/05_interview_defense.png) | ![Sign In Portal](frontend/public/screenshots/06_auth_signin.png) |
 
+| 7. Persistent Audit History Vault | |
+| :---: | :---: |
+| ![Audit History Vault](frontend/public/screenshots/07_history.png) | |
+
 ---
 
 ## Key Features
